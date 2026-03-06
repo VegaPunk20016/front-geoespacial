@@ -1,0 +1,35 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-base: #f0eee9;
+  --color-primary: #177da6;
+  --color-primary-light: #63a5bf;
+  --color-dark: #012737;
+  --color-content-black: #000000;
+  --color-content-white: #ffffff;
+  --font-inter: 'Inter', sans-serif;
+}
+
+@layer base {
+  :root {
+    font-family: var(--font-inter);
+    letter-spacing: -0.05em;
+    background-color: var(--color-base);
+    color: var(--color-content-black);
+    /* Evitamos que el scroll aparezca en el nivel más alto */
+    overflow: hidden;
+  }
+
+  html,
+  body,
+  #app {
+    height: 100dvh; /* Usamos Dynamic Viewport Height para móviles */
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Aseguramos que no haya scroll aquí */
+    overflow: hidden;
+  }
+}
