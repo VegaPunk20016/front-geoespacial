@@ -6,7 +6,7 @@ const routes = [
     path: '/',
     name: 'home',
     component: () => import('@/layouts/LandingPage.vue'),
-    meta: { guestOnly: true }, // Solo para gente sin sesión
+    meta: { guestOnly: true },
   },
   {
     path: '/register',
@@ -21,17 +21,16 @@ const routes = [
     meta: { guestOnly: true },
   },
   {
-    // Nuestra nueva ruta protegida
     path: '/dashboard',
     name: 'dashboard',
     component: () => import('@/views/DashboardPage.vue'),
-    meta: { requiresAuth: true }, // Esta etiqueta es la marca secreta
+    meta: { requiresAuth: true },
   },
   {
     path: '/padrones/:id/datos',
     name: 'PadronDataView',
     component: () => import('@/views/PadronDataView.vue'),
-    meta: { requiresAuth: true }, // Protegida igual que tu dashboard
+    meta: { requiresAuth: true },
   },
   {
     path: '/forgot-password',
@@ -50,24 +49,24 @@ const routes = [
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
-  routes: routes,
+  routes,
 })
 
 router.beforeEach((to, from, next) => {
   const authStore = useAuthStore()
+
+  authStore.checkTokenExpiry()
+
   const isLogged = authStore.isAuthenticated
 
-  // CASO A: La ruta es solo para invitados y el usuario YA está logueado
   if (to.meta.guestOnly && isLogged) {
-    return next('/dashboard') // Lo mandamos directo al dashboard
+    return next('/dashboard')
   }
 
-  // CASO B: La ruta requiere auth y el usuario NO está logueado
   if (to.meta.requiresAuth && !isLogged) {
-    return next('/login') // Lo pateamos al login
+    return next('/login')
   }
 
-  // CASO C: Todo normal, puede pasar
   next()
 })
 

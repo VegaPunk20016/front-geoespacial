@@ -1,6 +1,8 @@
 <script setup>
 import Footer from './components/TheFooter.vue'
 import NavBar from './components/NavBar.vue'
+import AppToast from './components/AppToast.vue'
+import AppConfirmModal from './components/AppConfirmModal.vue'
 </script>
 
 <template>
@@ -10,5 +12,8 @@ import NavBar from './components/NavBar.vue'
       <router-view />
     </main>
     <Footer />
+
+    <AppToast />
+    <AppConfirmModal />
   </div>
 </template>

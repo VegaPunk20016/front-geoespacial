@@ -40,7 +40,6 @@
         >
           <div class="text-center">
             <FileUp class="mx-auto h-12 w-12 text-gray-300" aria-hidden="true" />
-
             <div class="mt-4 flex text-sm leading-6 text-gray-600 justify-center">
               <label
                 for="file-upload"
@@ -50,30 +49,46 @@
                 <input
                   id="file-upload"
                   type="file"
-                  accept=".csv"
+                  accept=".csv,.txt,.xlsx,.xls"
                   class="sr-only"
                   @change="handleFileSelect"
                 />
               </label>
               <p class="pl-1">o arrástralo aquí</p>
             </div>
-
             <p v-if="selectedFile" class="mt-2 text-sm font-bold text-gray-900">
               📁 {{ selectedFile.name }} ({{ (selectedFile.size / 1024 / 1024).toFixed(2) }} MB)
             </p>
             <p v-else class="text-xs leading-5 text-gray-500 mt-2">
-              Solo archivos formato .CSV (Separado por comas)
+              Formatos permitidos: .CSV, .TXT, .XLSX, .XLS
             </p>
           </div>
         </div>
 
-        <div v-else class="py-12 flex flex-col items-center justify-center text-center">
-          <Loader2 class="h-12 w-12 text-[#177DA6] animate-spin mb-4" />
-          <h3 class="text-lg font-bold text-gray-900">Procesando Datos...</h3>
-          <p class="text-sm text-gray-500 max-w-xs mt-2">
-            El sistema está inyectando la información en la base de datos. Esto puede tomar unos
-            minutos dependiendo del tamaño del archivo. Por favor, no cierres esta ventana.
-          </p>
+        <!-- Estado de carga -->
+        <div v-else class="py-8 flex flex-col items-center justify-center text-center gap-4">
+          <Loader2 class="h-12 w-12 text-[#177DA6] animate-spin" />
+          <div>
+            <h3 class="text-lg font-bold text-gray-900">Procesando Datos...</h3>
+            <p class="text-sm text-gray-500 max-w-xs mt-1">
+              El sistema está inyectando la información en la base de datos. Por favor, no cierres
+              esta ventana.
+            </p>
+          </div>
+
+          <!-- 🆕 Barra de progreso real (fix #8 adelantado) -->
+          <div v-if="uploadProgress > 0" class="w-full max-w-xs">
+            <div class="flex justify-between text-xs text-gray-500 mb-1">
+              <span>Subiendo archivo...</span>
+              <span>{{ uploadProgress }}%</span>
+            </div>
+            <div class="w-full bg-gray-100 rounded-full h-2">
+              <div
+                class="bg-[#177DA6] h-2 rounded-full transition-all duration-300"
+                :style="{ width: `${uploadProgress}%` }"
+              />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -102,6 +117,7 @@
 <script setup>
 import { ref } from 'vue'
 import { usePadronStore } from '@/stores/padronStore'
+import { useToast } from '@/composables/useToast' // 🆕
 import { X, FileUp, Loader2, AlertCircle } from 'lucide-vue-next'
 
 const props = defineProps({
@@ -110,53 +126,56 @@ const props = defineProps({
 const emit = defineEmits(['close', 'imported'])
 
 const padronStore = usePadronStore()
+const toast = useToast() // 🆕
+
 const selectedFile = ref(null)
 const isDragging = ref(false)
 const isUploading = ref(false)
 const errorMessage = ref('')
+const uploadProgress = ref(0) // 🆕
 
-// Capturar archivo por Input
 const handleFileSelect = (event) => {
-  const file = event.target.files[0]
-  validarArchivo(file)
+  validarArchivo(event.target.files[0])
 }
 
-// Capturar archivo por Drag & Drop
 const handleDrop = (event) => {
   isDragging.value = false
-  const file = event.dataTransfer.files[0]
-  validarArchivo(file)
+  validarArchivo(event.dataTransfer.files[0])
 }
 
-// Validar que sea CSV
 const validarArchivo = (file) => {
   errorMessage.value = ''
   if (!file) return
-
-  if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
-    errorMessage.value = 'El archivo debe ser un formato .CSV válido.'
+  const allowedExtensions = ['.csv', '.txt', '.xlsx', '.xls']
+  const isValid = allowedExtensions.some((ext) => file.name.toLowerCase().endsWith(ext))
+  if (!isValid) {
+    errorMessage.value = 'Formato no permitido. Por favor selecciona un archivo CSV, TXT o Excel.'
     selectedFile.value = null
     return
   }
   selectedFile.value = file
 }
 
-// Ejecutar el Store
 const procesarArchivo = async () => {
   if (!selectedFile.value) return
 
   isUploading.value = true
   errorMessage.value = ''
+  uploadProgress.value = 0 // 🆕
 
   try {
-    await padronStore.importarCsv(props.padron.id, selectedFile.value)
-    alert('¡Importación completada con éxito!')
+
+    await padronStore.importarCsv(props.padron.id, selectedFile.value, (progress) => {
+      uploadProgress.value = progress
+    })
+    toast.success('¡Importación completada con éxito!') // 🆕 reemplaza alert()
     emit('imported')
     emit('close')
   } catch (error) {
     errorMessage.value = padronStore.errorMessage || 'Error crítico al importar el archivo.'
   } finally {
     isUploading.value = false
+    uploadProgress.value = 0
   }
 }
 </script>

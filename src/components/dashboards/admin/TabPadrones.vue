@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-[calc(100vh-80px)] bg-gray-50 p-6 md:p-8">
+  <div>
     <header class="mb-8 flex justify-between items-center">
       <div>
         <h1 class="text-2xl font-bold text-gray-800">Gestión de Padrones</h1>
@@ -105,9 +105,9 @@ import { usePadronStore } from '@/stores/padronStore'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 
-import PadronTableRow from './admin/PadronTableRow.vue'
-import PadronCreateModal from './admin/PadronCreateModal.vue'
-import PadronImportModal from './admin/PadronImportModal.vue'
+import PadronTableRow from './PadronTableRow.vue'
+import PadronCreateModal from './PadronCreateModal.vue'
+import PadronImportModal from './PadronImportModal.vue'
 
 // ─── STORE & COMPOSABLES ──────────────────────────────────────────────────────
 const padronStore = usePadronStore()
@@ -118,7 +118,7 @@ const { confirm } = useConfirm()
 // ─── ESTADO DEL STORE (Pilar 2 — Single Source of Truth) ─────────────────────
 const { padrones, status, errorMessage } = storeToRefs(padronStore)
 
-// ─── ESTADO LOCAL DE MODALES (solo UI) ───────────────────────────────────────
+// ─── ESTADO LOCAL DE MODALES (solo UI, no datos) ─────────────────────────────
 const isCreateModalOpen = ref(false)
 const isImportModalOpen = ref(false)
 const selectedPadron = ref(null)
@@ -147,12 +147,14 @@ const handleDeletePadron = async (padron) => {
     await padronStore.eliminarPadron(padron.id, true)
     toast.success(`Padrón "${padron.nombre_padron}" eliminado correctamente.`)
   } catch {
-    toast.error(padronStore.errorMessage || 'Error al eliminar el padrón.')
+    toast.error(padronStore.errorMessage || 'Error al eliminar el padrón del servidor.')
   }
 }
 
 // ─── CICLO DE VIDA ────────────────────────────────────────────────────────────
 onMounted(() => {
-  if (padronStore.status === 'idle') padronStore.fetchPadrones()
+  if (padronStore.status === 'idle') {
+    padronStore.fetchPadrones()
+  }
 })
 </script>

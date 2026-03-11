@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: 'http://192.168.60.111:8080/api', // La URL de tu servidor CodeIgniter
+  baseURL: import.meta.env.VITE_API_URL,
   headers: {
     'Content-Type': 'application/json',
     Accept: 'application/json',
@@ -16,7 +16,18 @@ api.interceptors.request.use(
     }
     return config
   },
+  (error) => Promise.reject(error),
+)
+
+api.interceptors.response.use(
+  (response) => response,
   (error) => {
+    if (error.response?.status === 401) {
+      console.warn('El token ha expirado. Forzando salida...')
+      localStorage.removeItem('jwt_token')
+      localStorage.removeItem('user_data')
+      window.location.href = '/login'
+    }
     return Promise.reject(error)
   },
 )

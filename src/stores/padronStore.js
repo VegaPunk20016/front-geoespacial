@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import padronService from '../services/padronService'
+import padronService from '../services/padronService' // Recuerda que aquí usamos padronService.eliminar()
 
 export const usePadronStore = defineStore('padron', {
   state: () => ({
@@ -56,6 +56,7 @@ export const usePadronStore = defineStore('padron', {
         throw err
       }
     },
+
     async importarCsv(id, file) {
       this.actionStatus = 'loading'
       this.errorMessage = null
@@ -64,7 +65,22 @@ export const usePadronStore = defineStore('padron', {
         this.actionStatus = 'success'
         return response.data
       } catch (err) {
-        this.errorMessage = err.response?.data?.message || 'Error al procesar el archivo CSV'
+        this.errorMessage = err.response?.data?.message || 'Error al procesar el archivo'
+        this.actionStatus = 'error'
+        throw err
+      }
+    },
+
+    async eliminarPadron(id, permanente = false) {
+      this.actionStatus = 'loading'
+      this.errorMessage = null
+      try {
+        await padronService.eliminar(id, permanente) 
+        this.padrones = this.padrones.filter((p) => p.id !== id)
+
+        this.actionStatus = 'success'
+      } catch (err) {
+        this.errorMessage = err.response?.data?.message || 'Error al eliminar el padrón'
         this.actionStatus = 'error'
         throw err
       }
