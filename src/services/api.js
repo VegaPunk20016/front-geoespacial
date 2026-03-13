@@ -4,6 +4,7 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
   headers: {
     'Content-Type': 'application/json',
+    'X-Requested-With': 'XMLHttpRequest',
     Accept: 'application/json',
   },
 })
@@ -22,11 +23,14 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // Si el error es 401 (No autorizado)
     if (error.response?.status === 401) {
-      console.warn('El token ha expirado. Forzando salida...')
-      localStorage.removeItem('jwt_token')
-      localStorage.removeItem('user_data')
-      window.location.href = '/login'
+      if (!window.location.pathname.includes('/login')) {
+        console.warn('Sesión expirada o inválida. Redirigiendo...')
+        localStorage.removeItem('jwt_token')
+        localStorage.removeItem('user_data')
+        window.location.href = '/login'
+      }
     }
     return Promise.reject(error)
   },

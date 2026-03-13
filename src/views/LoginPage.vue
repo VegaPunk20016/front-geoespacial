@@ -1,244 +1,162 @@
 <template>
-  <div class="flex h-full" style="background: var(--color-base)">
-    <!-- Panel izquierdo — mismo lenguaje que la landing -->
+  <div
+    class="flex flex-col lg:flex-row h-full overflow-y-auto lg:overflow-hidden font-sans"
+    style="background-color: #f1f1eb"
+  >
     <div
-      class="hidden lg:flex lg:w-1/2 flex-col justify-between p-16 relative overflow-hidden"
-      style="
-        background: linear-gradient(
-          135deg,
-          var(--color-dark) 0%,
-          #0d3a4f 55%,
-          var(--color-primary) 100%
-        );
-      "
+      class="hidden lg:flex lg:w-1/2 flex-col justify-between p-16 relative overflow-hidden flex-shrink-0"
+      style="background: linear-gradient(135deg, #012737 0%, #0d3a4f 55%, #2b7194 100%)"
     >
-      <!-- Círculos decorativos (mismos que la landing) -->
       <div
-        style="
-          position: absolute;
-          width: 500px;
-          height: 500px;
-          border-radius: 50%;
-          background: rgba(99, 165, 191, 0.08);
-          top: -120px;
-          right: -100px;
-          pointer-events: none;
-        "
+        class="absolute w-[500px] h-[500px] rounded-full bg-white/5 -top-32 -right-24 pointer-events-none"
       />
-      <div
-        style="
-          position: absolute;
-          width: 300px;
-          height: 300px;
-          border-radius: 50%;
-          background: rgba(255, 255, 255, 0.03);
-          bottom: 60px;
-          left: -80px;
-          pointer-events: none;
-        "
-      />
-
-      <!-- Parte superior -->
       <div class="relative z-10">
-        <!-- Badge — igual que la landing -->
         <div
-          class="inline-flex items-center gap-2 px-3 py-1 rounded-full mb-10"
-          style="background: rgba(99, 165, 191, 0.15); border: 1px solid rgba(99, 165, 191, 0.25)"
+          class="inline-flex items-center gap-2 px-3 py-1 rounded-full mb-10 bg-white/10 border border-white/20"
         >
-          <span
-            class="text-[10px] uppercase tracking-widest font-semibold"
-            style="color: var(--color-primary-light)"
+          <span class="text-[10px] uppercase tracking-widest font-semibold text-blue-200"
+            >| Sistema de Análisis Territorial |</span
           >
-            | Sistema de Análisis Territorial |
-          </span>
         </div>
-
-        <h1
-          class="text-5xl font-extrabold leading-tight text-white mb-5"
-          style="letter-spacing: -0.04em"
-        >
+        <h1 class="text-5xl font-extrabold leading-tight text-white mb-5 tracking-tighter">
           Transforma datos<br />oficiales en<br />
-          <span style="color: var(--color-primary-light)">decisiones</span>
+          <span class="text-blue-300">decisiones</span>
         </h1>
-        <p class="text-sm leading-relaxed max-w-sm" style="color: rgba(255, 255, 255, 0.55)">
+        <p class="text-sm leading-relaxed max-w-sm text-white/60">
           Sistema integrado de bases de datos georreferenciadas — DENUE · INEGI · Electoral — con
           visualización y análisis mediante mapas interactivos.
         </p>
       </div>
 
-      <!-- Mini-stats -->
       <div class="relative z-10 flex items-center gap-8">
-        <div>
-          <div class="text-3xl font-extrabold text-white" style="letter-spacing: -0.04em">32</div>
-          <div
-            class="text-[10px] uppercase tracking-widest mt-1"
-            style="color: rgba(255, 255, 255, 0.35)"
-          >
-            Entidades
+        <div
+          v-for="stat in [
+            { v: '32', t: 'Entidades' },
+            { v: 'JWT', t: 'Seguridad', c: true },
+            { v: 'CI4', t: 'Backend' },
+          ]"
+          :key="stat.t"
+          class="flex items-center gap-8"
+        >
+          <div>
+            <div
+              class="text-3xl font-extrabold tracking-tighter"
+              :class="stat.c ? 'text-blue-300' : 'text-white'"
+            >
+              {{ stat.v }}
+            </div>
+            <div class="text-[10px] uppercase tracking-widest mt-1 text-white/40">{{ stat.t }}</div>
           </div>
-        </div>
-        <div style="width: 1px; height: 36px; background: rgba(255, 255, 255, 0.12)" />
-        <div>
-          <div
-            class="text-3xl font-extrabold"
-            style="color: var(--color-primary-light); letter-spacing: -0.04em"
-          >
-            JWT
-          </div>
-          <div
-            class="text-[10px] uppercase tracking-widest mt-1"
-            style="color: rgba(255, 255, 255, 0.35)"
-          >
-            Seguridad
-          </div>
-        </div>
-        <div style="width: 1px; height: 36px; background: rgba(255, 255, 255, 0.12)" />
-        <div>
-          <div class="text-3xl font-extrabold text-white" style="letter-spacing: -0.04em">CI4</div>
-          <div
-            class="text-[10px] uppercase tracking-widest mt-1"
-            style="color: rgba(255, 255, 255, 0.35)"
-          >
-            Backend
-          </div>
+          <div v-if="stat.t !== 'Backend'" class="w-px h-9 bg-white/10" />
         </div>
       </div>
     </div>
 
-    <!-- Panel derecho — formulario -->
-    <div
-      class="w-full lg:w-1/2 flex items-center justify-center p-8 overflow-y-auto"
-      style="background: var(--color-base)"
-    >
-      <div class="w-full max-w-sm">
-        <!-- Logo + nombre (mobile y desktop) -->
-        <div class="flex items-center gap-2.5 mb-8">
+    <div class="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-8 min-h-full">
+      <div class="w-full max-w-sm py-6">
+        <div class="flex items-center gap-3 mb-10">
           <img src="/Logo-O.ico" alt="IIDESOFT" class="w-8 h-8" />
-          <span
-            class="font-bold text-base tracking-wide"
-            style="color: var(--color-dark); letter-spacing: 0.02em"
-          >
-            IIDESOFT
-          </span>
+          <span class="font-bold text-[#012737] tracking-wider text-lg">IIDESOFT</span>
         </div>
 
-        <h2
-          class="text-2xl font-extrabold mb-1"
-          style="color: var(--color-dark); letter-spacing: -0.03em"
-        >
-          Bienvenido
-        </h2>
-        <p class="text-sm mb-7" style="color: var(--color-muted)">
-          Inicia sesión en tu cuenta de acceso
-        </p>
+        <h2 class="text-3xl font-bold text-[#012737] mb-1 tracking-tight">Bienvenido</h2>
+        <p class="text-[#6b7280] text-sm mb-8">Inicia sesión en tu cuenta de acceso</p>
 
-        <form @submit.prevent="handleLogin" class="space-y-4">
-          <!-- Email -->
-          <div>
+        <form @submit.prevent="handleLogin" class="space-y-5">
+          <div class="space-y-1.5">
             <label
-              class="block text-[11px] font-bold uppercase tracking-widest mb-1.5"
-              style="color: var(--color-muted)"
+              class="block text-[10px] font-bold text-[#6b7280] uppercase tracking-widest ml-0.5"
+              >Correo electrónico</label
             >
-              Correo electrónico
-            </label>
             <input
               v-model="form.email"
               type="email"
               placeholder="usuario@iidesoft.com"
               required
-              class="g-input"
+              class="input-iidesoft"
             />
           </div>
 
-          <!-- Password -->
-          <div>
-            <div class="flex items-center justify-between mb-1.5">
-              <label
-                class="block text-[11px] font-bold uppercase tracking-widest"
-                style="color: var(--color-muted)"
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between">
+              <label class="text-[10px] font-bold text-[#6b7280] uppercase tracking-widest ml-0.5"
+                >Contraseña</label
               >
-                Contraseña
-              </label>
               <RouterLink
                 to="/forgot-password"
-                class="text-xs font-medium transition-opacity hover:opacity-70"
-                style="color: var(--color-primary)"
+                class="text-[10px] font-bold text-[#2b7194] hover:underline uppercase tracking-wide"
+                >¿Olvidaste tu contraseña?</RouterLink
               >
-                ¿Olvidaste tu contraseña?
-              </RouterLink>
             </div>
-            <div class="relative">
+            <div class="relative flex items-center">
               <input
                 v-model="form.password"
                 :type="showPassword ? 'text' : 'password'"
                 placeholder="••••••••"
                 required
-                class="g-input"
-                style="padding-right: 2.75rem"
+                class="input-iidesoft pr-12"
               />
               <button
                 type="button"
                 @click="showPassword = !showPassword"
-                class="absolute right-3 top-1/2 -translate-y-1/2 transition-colors"
-                style="
-                  color: var(--color-muted);
-                  background: none;
-                  border: none;
-                  cursor: pointer;
-                  display: flex;
-                "
+                class="absolute right-3 text-gray-400 hover:text-[#012737]"
               >
-                <EyeOff v-if="!showPassword" :size="17" />
-                <Eye v-else :size="17" />
+                <EyeOff v-if="!showPassword" :size="18" /> <Eye v-else :size="18" />
               </button>
             </div>
           </div>
 
-          <!-- Error -->
-          <Transition name="fade">
-            <div
-              v-if="errorMessage"
-              class="text-sm px-4 py-2.5 rounded-lg border flex items-center gap-2"
-              style="background: #fee2e2; border-color: #fecaca; color: #991b1b"
-            >
-              <AlertCircle :size="14" class="shrink-0" />
-              {{ errorMessage }}
-            </div>
-          </Transition>
+          <div class="min-h-[40px]">
+            <Transition name="fade" mode="out-in">
+              <div
+                v-if="isPending"
+                class="bg-amber-50 border border-amber-200 p-4 rounded-lg flex gap-3 shadow-sm"
+              >
+                <AlertCircle class="text-amber-600 shrink-0" :size="20" />
+                <div>
+                  <p
+                    class="text-amber-800 text-[11px] font-bold uppercase tracking-tight leading-tight"
+                  >
+                    Acceso en revisión
+                  </p>
+                  <p class="text-amber-700 text-[11px] mt-1 leading-normal">
+                    Tu cuenta aún no ha sido activada por un administrador. Recibirás un correo
+                    cuando el acceso sea aprobado.
+                  </p>
+                </div>
+              </div>
 
-          <!-- Submit -->
+              <div
+                v-else-if="errorMessage"
+                class="text-red-600 text-[11px] font-semibold flex items-center gap-2 px-1"
+              >
+                <span class="w-1.5 h-1.5 bg-red-600 rounded-full animate-pulse"></span>
+                {{ errorMessage }}
+              </div>
+            </Transition>
+          </div>
+
           <AppButton
             type="submit"
             variant="dark"
-            label="Entrar al sistema"
             :isLoading="isLoading"
-            class="w-full !py-3 text-sm"
-          />
+            class="w-full !bg-[#012737] !py-3.5 !rounded-lg !text-sm !font-bold !tracking-wide shadow-lg shadow-[#012737]/20 transition-all active:scale-[0.98]"
+          >
+            <template #default>Entrar al sistema</template>
+          </AppButton>
         </form>
 
-        <!-- Registro -->
-        <div
-          class="mt-6 pt-5 text-center text-sm border-t"
-          style="border-color: var(--color-base-dark)"
-        >
-          <span style="color: var(--color-muted)">¿No tienes cuenta?</span>
-          <RouterLink
-            to="/register"
-            class="font-semibold ml-1 transition-opacity hover:opacity-70"
-            style="color: var(--color-primary)"
+        <div class="mt-8 pt-6 border-t border-gray-200/50 text-center">
+          <span class="text-sm text-[#6b7280]">¿No tienes cuenta?</span>
+          <RouterLink to="/register" class="font-bold text-[#2b7194] underline ml-1"
+            >Regístrate</RouterLink
           >
-            Regístrate
-          </RouterLink>
         </div>
 
-        <!-- Pie de firma institucional -->
-        <div class="mt-8 text-center">
-          <span
-            class="text-[10px] uppercase tracking-widest font-semibold"
-            style="color: #b0a89a; letter-spacing: 0.12em"
-          >
-            IIDESOFT · Sistema Geoespacial · v2.0
-          </span>
+        <div class="mt-12 text-center">
+          <p class="text-[10px] font-bold text-[#b0a89a] tracking-[0.2em] uppercase">
+            IIDESOFT · SISTEMA GEOESPACIAL · V2.0
+          </p>
         </div>
       </div>
     </div>
@@ -255,28 +173,55 @@ import { useAuthStore } from '../stores/authStore'
 
 const router = useRouter()
 const authStore = useAuthStore()
-
 const form = reactive({ email: '', password: '' })
 const showPassword = ref(false)
 const isLoading = ref(false)
 const errorMessage = ref('')
+const isPending = ref(false) // Nueva variable para errores de validación
 
 const handleLogin = async () => {
   errorMessage.value = ''
+  isPending.value = false
   isLoading.value = true
+
   try {
     const response = await authService.login({ email: form.email, password: form.password })
     const token = response.token
     if (token) {
       authStore.login(token)
       router.push('/dashboard')
-    } else {
-      throw new Error('No se recibió el token.')
-    }
+    } else throw new Error('No se recibió el token.')
   } catch (error) {
-    errorMessage.value = error.response?.data?.message || 'Credenciales inválidas.'
+    const message = error.response?.data?.message || ''
+
+    // DETECCIÓN DE CUENTA PENDIENTE (Amber)
+    if (
+      message.toLowerCase().includes('validar') ||
+      message.toLowerCase().includes('pendiente') ||
+      message.toLowerCase().includes('activada')
+    ) {
+      isPending.value = true
+    } else {
+      errorMessage.value = message || 'Credenciales inválidas.'
+    }
   } finally {
     isLoading.value = false
   }
 }
 </script>
+
+<style scoped>
+@reference "tailwindcss";
+
+.input-iidesoft {
+  @apply w-full bg-[#ebf2ff] px-4 py-2.5 rounded-sm text-[#012737] focus:outline-none focus:ring-2 focus:ring-[#012737]/10 placeholder-gray-400/60 transition-all text-sm border-none;
+}
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+</style>

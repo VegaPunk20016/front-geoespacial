@@ -9,8 +9,18 @@ export default {
     return api.get(`/padrones/${id}`)
   },
 
-  getBeneficiarios(id) {
-    return api.get(`/padrones/${id}/beneficiarios`)
+  // Puntos reales — zoom alto (≥13)
+  getBeneficiarios(id, coords = null) {
+    let url = `/padrones/${id}/beneficiarios`
+    if (coords) url += '?' + new URLSearchParams(coords).toString()
+    return api.get(url)
+  },
+
+  // Clusters del servidor — zoom bajo (<13)
+  getClusters(id, coords = null) {
+    let url = `/padrones/${id}/clusters`
+    if (coords) url += '?' + new URLSearchParams(coords).toString()
+    return api.get(url)
   },
 
   create(data) {
@@ -20,24 +30,19 @@ export default {
   importCsv(id, file) {
     const formData = new FormData()
     formData.append('archivo', file)
+    return api.post(`/padrones/${id}/importar`, formData, {
+      headers: { 'Content-Type': undefined },
+      onUploadProgress: (e) => {
+        console.log(`Subiendo: ${Math.round((e.loaded * 100) / e.total)}%`)
+      },
+    })
+  },
 
-    return api
-      .post(`/padrones/${id}/importar`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-        onUploadProgress: (progressEvent) => {
-          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total)
-          console.log(`Subiendo: ${percentCompleted}%`)
-        },
-      })
-      .catch((err) => {
-        console.error('Error en la petición Axios:', err)
-        throw err
-      })
+  delete(id, permanente = false) {
+    return api.delete(`/padrones/${id}?permanente=${permanente}`)
   },
 
   eliminar(id, permanente = false) {
-    return api.delete(`/padrones/${id}?permanente=${permanente}`)
+    return this.delete(id, permanente)
   },
 }

@@ -1,8 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Menu, X } from 'lucide-vue-next'
-import AppButton from './AppButton.vue'
+import { Menu, X, LogIn, UserPlus, LayoutDashboard, LogOut } from 'lucide-vue-next'
 import { useAuthStore } from '../stores/authStore'
 
 const isMenuOpen = ref(false)
@@ -12,136 +11,141 @@ const authStore = useAuthStore()
 
 const isAuthPage = computed(() => ['/login', '/register'].includes(route.path))
 
-const goToLogin = () => {
-  isMenuOpen.value = false
-  router.push('/login')
-}
-const goToRegister = () => {
-  isMenuOpen.value = false
-  router.push('/register')
-}
-const goToDashboard = () => {
-  isMenuOpen.value = false
-  router.push('/dashboard')
-}
-const handleLogout = () => {
-  isMenuOpen.value = false
-  authStore.logout()
-  router.push('/login')
+const navLinks = [
+  { name: 'Inicio', path: '/' },
+  // Agrega más links si es necesario
+]
+
+const closeMenu = () => (isMenuOpen.value = false)
+
+const handleAction = (action) => {
+  closeMenu()
+  action()
 }
 
 const handleResize = () => {
   if (window.innerWidth >= 768 && isMenuOpen.value) isMenuOpen.value = false
 }
+
 onMounted(() => window.addEventListener('resize', handleResize))
 onUnmounted(() => window.removeEventListener('resize', handleResize))
 </script>
 
 <template>
   <nav
-    class="relative left-1/2 -translate-x-1/2 z-50 w-full max-w-[850px] px-4 transition-all duration-300"
+    class="sticky top-0 w-full z-50 transition-all duration-300 border-b border-white/10 backdrop-blur-md bg-opacity-80"
+    style="background-color: color-mix(in srgb, var(--color-primary), transparent 15%)"
   >
-    <div
-      class="flex items-center w-full backdrop-blur-md border rounded-full px-5 py-1.5"
-      :class="isAuthPage ? 'justify-center' : 'justify-between'"
-      style="
-        background: rgba(23, 125, 166, 0.1);
-        border-color: rgba(255, 255, 255, 0.22);
-        box-shadow: 0 4px 4px rgba(0, 0, 0, 0.25);
-      "
-    >
-      <!-- Logo -->
+    <div class="max-w-screen-xl mx-auto px-6 h-16 flex items-center justify-between">
       <div
-        class="flex h-[40px] w-[40px] md:h-[55px] md:w-[55px] items-center justify-center cursor-pointer transition-transform hover:scale-105"
         @click="router.push('/')"
+        class="flex items-center gap-3 cursor-pointer group transition-transform active:scale-95"
       >
-        <img src="/Logo-O.ico" alt="Logo Iidesoft" class="w-full h-auto drop-shadow-md" />
+        <div class="relative">
+          <img
+            src="/Logo-O.ico"
+            alt="Logo"
+            class="h-9 w-9 drop-shadow-xl group-hover:rotate-6 transition-transform duration-300"
+          />
+          <div
+            class="absolute -inset-1 bg-white/20 blur rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+          ></div>
+        </div>
+        <span class="font-black text-white text-lg tracking-wider hidden sm:block uppercase">
+          Iidesoft
+        </span>
       </div>
 
       <template v-if="!isAuthPage">
-        <!-- Hamburguesa mobile -->
-        <button
-          class="md:hidden p-1.5 rounded-lg transition-colors"
-          style="color: var(--color-dark); background: rgba(0, 0, 0, 0.05)"
-          @click="isMenuOpen = !isMenuOpen"
-        >
-          <Menu v-if="!isMenuOpen" :size="20" />
-          <X v-else :size="20" />
-        </button>
-
-        <!-- Botones desktop -->
-        <div
-          class="hidden md:flex items-center gap-2 p-1.5 rounded-2xl shadow-inner"
-          style="background: rgba(23, 125, 166, 0.18)"
-        >
+        <div class="hidden md:flex items-center gap-4">
           <template v-if="!authStore.isAuthenticated">
-            <AppButton
-              label="Inicia Sesión"
-              variant="base"
-              class="!py-1.5 !px-4 text-xs"
-              @click="goToLogin"
-            />
-            <AppButton
-              label="Registrarse"
-              variant="dark"
-              class="!py-1.5 !px-4 text-xs"
-              @click="goToRegister"
-            />
+            <button
+              @click="router.push('/login')"
+              class="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white/90 hover:text-white transition-colors"
+            >
+              <LogIn :size="18" />
+              Inicia Sesión
+            </button>
+            <button
+              @click="router.push('/register')"
+              class="px-6 py-2 text-sm font-bold rounded-full shadow-lg shadow-white/5 hover:shadow-white/10 transform hover:-translate-y-0.5 transition-all"
+              style="background: white; color: var(--color-primary)"
+            >
+              Registrarse
+            </button>
           </template>
+
           <template v-else>
-            <AppButton
-              label="Dashboard"
-              variant="base"
-              class="!py-1.5 !px-4 text-xs"
-              @click="goToDashboard"
-            />
-            <AppButton
-              label="Cerrar Sesión"
-              variant="dark"
-              class="!py-1.5 !px-4 text-xs"
-              @click="handleLogout"
-            />
+            <button
+              @click="(authStore.logout(), router.push('/login'))"
+              class="p-2.5 rounded-full bg-red-500/10 hover:bg-red-500/20 text-red-200 border border-red-500/20 transition-all"
+              title="Cerrar Sesión"
+            >
+              <LogOut :size="20" />
+            </button>
           </template>
         </div>
+
+        <button
+          @click="isMenuOpen = !isMenuOpen"
+          class="md:hidden p-2 rounded-xl text-white hover:bg-white/10 transition-colors"
+        >
+          <Menu v-if="!isMenuOpen" :size="24" />
+          <X v-else :size="24" />
+        </button>
       </template>
     </div>
 
-    <!-- Menú mobile -->
-    <Transition name="slide-down">
+    <Transition
+      enter-active-class="transition duration-200 ease-out"
+      enter-from-class="opacity-0 -translate-y-4"
+      enter-to-class="opacity-100 translate-y-0"
+      leave-active-class="transition duration-150 ease-in"
+      leave-from-class="opacity-100 translate-y-0"
+      leave-to-class="opacity-0 -translate-y-4"
+    >
       <div
         v-if="isMenuOpen && !isAuthPage"
-        class="absolute top-[65px] left-4 right-4 p-4 rounded-2xl shadow-xl md:hidden flex flex-col gap-2 border"
-        style="background: white; border-color: var(--color-base-dark)"
+        class="absolute top-full left-0 w-full md:hidden border-b border-white/10 shadow-2xl overflow-hidden"
+        style="background: var(--color-primary)"
       >
-        <template v-if="!authStore.isAuthenticated">
-          <AppButton
-            label="Inicia Sesión"
-            variant="base"
-            class="w-full !py-2 text-sm"
-            @click="goToLogin"
-          />
-          <AppButton
-            label="Registrarse"
-            variant="dark"
-            class="w-full !py-2 text-sm"
-            @click="goToRegister"
-          />
-        </template>
-        <template v-else>
-          <AppButton
-            label="Dashboard"
-            variant="base"
-            class="w-full !py-2 text-sm"
-            @click="goToDashboard"
-          />
-          <AppButton
-            label="Cerrar Sesión"
-            variant="dark"
-            class="w-full !py-2 text-sm"
-            @click="handleLogout"
-          />
-        </template>
+        <div class="flex flex-col p-4 gap-3">
+          <template v-if="!authStore.isAuthenticated">
+            <button
+              @click="handleAction(() => router.push('/login'))"
+              class="w-full py-3.5 px-4 rounded-xl text-white font-medium bg-white/5 border border-white/10 flex items-center gap-3"
+            >
+              <LogIn :size="20" /> Inicia Sesión
+            </button>
+            <button
+              @click="handleAction(() => router.push('/register'))"
+              class="w-full py-3.5 px-4 rounded-xl font-bold flex items-center justify-center gap-2"
+              style="background: white; color: var(--color-primary)"
+            >
+              <UserPlus :size="20" /> Registrarse
+            </button>
+          </template>
+          <template v-else>
+            <button
+              @click="
+                handleAction(() => {
+                  ;(authStore.logout(), router.push('/login'))
+                })
+              "
+              class="w-full py-3.5 px-4 rounded-xl font-bold text-red-200 bg-red-500/20 border border-red-500/20 flex items-center gap-3"
+            >
+              <LogOut :size="20" /> Cerrar Sesión
+            </button>
+          </template>
+        </div>
       </div>
     </Transition>
   </nav>
 </template>
+
+<style scoped>
+/* Sutil gradiente para profundidad */
+nav {
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+}
+</style>

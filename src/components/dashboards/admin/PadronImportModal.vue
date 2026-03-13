@@ -1,113 +1,137 @@
 <template>
   <div
-    class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity"
+    class="fixed inset-0 z-50 flex items-center justify-center p-4"
+    style="background: rgba(1, 39, 55, 0.55); backdrop-filter: blur(4px)"
   >
-    <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col">
+    <div
+      class="w-full max-w-lg rounded-xl border overflow-hidden shadow-2xl"
+      style="background: white; border-color: var(--color-base-dark)"
+    >
+      <!-- Header -->
       <div
-        class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50"
+        class="flex items-center justify-between px-6 py-4 border-b"
+        style="background: #fdfcfa; border-color: var(--color-base-dark)"
       >
         <div>
-          <h3 class="text-lg font-bold text-gray-900">Importar Datos</h3>
-          <p class="text-xs text-gray-500 mt-0.5">
-            Destino: <strong class="text-[#177DA6]">{{ padron.nombre_padron }}</strong>
+          <h3 class="text-sm font-bold" style="color: var(--color-dark)">Importar Datos</h3>
+          <p class="text-[11px] mt-0.5" style="color: var(--color-muted)">
+            Destino: <strong style="color: var(--color-primary)">{{ padron.nombre_padron }}</strong>
           </p>
         </div>
         <button
           @click="!isUploading && $emit('close')"
           :disabled="isUploading"
-          class="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-full hover:bg-gray-100 disabled:opacity-50"
+          class="p-1.5 rounded-lg transition-colors disabled:opacity-40"
+          style="color: var(--color-muted)"
+          @mouseenter="
+            (e) => !isUploading && (e.currentTarget.style.background = 'var(--color-base)')
+          "
+          @mouseleave="(e) => (e.currentTarget.style.background = 'transparent')"
         >
-          <X class="w-5 h-5" />
+          <X :size="17" />
         </button>
       </div>
 
+      <!-- Body -->
       <div class="p-6">
+        <!-- Error -->
         <div
           v-if="errorMessage"
-          class="mb-4 p-3 bg-red-50 text-red-700 text-sm rounded-lg border border-red-100 flex items-start gap-2"
+          class="flex items-start gap-2 text-xs px-4 py-3 rounded-lg border mb-4"
+          style="background: #fee2e2; border-color: #fecaca; color: #991b1b"
         >
-          <AlertCircle class="w-4 h-4 mt-0.5 shrink-0" />
-          <span>{{ errorMessage }}</span>
+          <AlertCircle :size="13" class="shrink-0 mt-0.5" /> {{ errorMessage }}
         </div>
 
+        <!-- Drop zone -->
         <div
           v-if="!isUploading"
-          class="mt-2 flex justify-center rounded-lg border border-dashed border-gray-900/25 px-6 py-10 transition-colors"
-          :class="{ 'bg-[#177DA6]/5 border-[#177DA6]': isDragging }"
+          class="rounded-xl border-2 border-dashed transition-all px-6 py-12 text-center cursor-pointer"
+          :style="
+            isDragging
+              ? 'border-color:var(--color-primary);background:#EEF7FA;'
+              : 'border-color:var(--color-base-dark);background:var(--color-base);'
+          "
           @dragover.prevent="isDragging = true"
           @dragleave.prevent="isDragging = false"
           @drop.prevent="handleDrop"
+          @click="$refs.fileInput.click()"
         >
-          <div class="text-center">
-            <FileUp class="mx-auto h-12 w-12 text-gray-300" aria-hidden="true" />
-            <div class="mt-4 flex text-sm leading-6 text-gray-600 justify-center">
-              <label
-                for="file-upload"
-                class="relative cursor-pointer rounded-md bg-white font-semibold text-[#177DA6] focus-within:outline-none focus-within:ring-2 focus-within:ring-[#177DA6] focus-within:ring-offset-2 hover:text-[#126385]"
-              >
-                <span>Selecciona un archivo</span>
-                <input
-                  id="file-upload"
-                  type="file"
-                  accept=".csv,.txt,.xlsx,.xls"
-                  class="sr-only"
-                  @change="handleFileSelect"
-                />
-              </label>
-              <p class="pl-1">o arrástralo aquí</p>
+          <div class="flex flex-col items-center gap-3">
+            <div
+              class="w-14 h-14 rounded-xl flex items-center justify-center"
+              style="background: white; border: 1.5px solid var(--color-base-dark)"
+            >
+              <FileUp :size="24" style="color: var(--color-primary-light)" />
             </div>
-            <p v-if="selectedFile" class="mt-2 text-sm font-bold text-gray-900">
-              📁 {{ selectedFile.name }} ({{ (selectedFile.size / 1024 / 1024).toFixed(2) }} MB)
-            </p>
-            <p v-else class="text-xs leading-5 text-gray-500 mt-2">
-              Formatos permitidos: .CSV, .TXT, .XLSX, .XLS
+            <div>
+              <p class="text-sm font-semibold" style="color: var(--color-dark)">
+                {{ selectedFile ? selectedFile.name : 'Arrastra tu archivo aquí' }}
+              </p>
+              <p class="text-xs mt-1" style="color: var(--color-muted)">
+                {{
+                  selectedFile
+                    ? `${(selectedFile.size / 1024 / 1024).toFixed(2)} MB`
+                    : 'o haz clic para seleccionarlo'
+                }}
+              </p>
+            </div>
+            <p
+              v-if="!selectedFile"
+              class="text-[10px] font-semibold uppercase tracking-widest"
+              style="color: var(--color-muted)"
+            >
+              CSV · TXT · XLSX · XLS
             </p>
           </div>
+
+          <input
+            ref="fileInput"
+            type="file"
+            accept=".csv,.txt,.xlsx,.xls"
+            class="sr-only"
+            @change="handleFileSelect"
+          />
         </div>
 
-        <!-- Estado de carga -->
-        <div v-else class="py-8 flex flex-col items-center justify-center text-center gap-4">
-          <Loader2 class="h-12 w-12 text-[#177DA6] animate-spin" />
+        <!-- Uploading -->
+        <div v-else class="py-12 flex flex-col items-center text-center gap-4">
+          <div
+            class="w-14 h-14 rounded-xl flex items-center justify-center"
+            style="background: var(--color-base); border: 1.5px solid var(--color-base-dark)"
+          >
+            <Loader2 :size="26" class="animate-spin" style="color: var(--color-primary)" />
+          </div>
           <div>
-            <h3 class="text-lg font-bold text-gray-900">Procesando Datos...</h3>
-            <p class="text-sm text-gray-500 max-w-xs mt-1">
-              El sistema está inyectando la información en la base de datos. Por favor, no cierres
+            <p class="text-sm font-bold" style="color: var(--color-dark)">Procesando datos...</p>
+            <p class="text-xs mt-1.5 max-w-xs" style="color: var(--color-muted)">
+              El sistema está inyectando la información en la base de datos. Por favor no cierres
               esta ventana.
             </p>
-          </div>
-
-          <!-- 🆕 Barra de progreso real (fix #8 adelantado) -->
-          <div v-if="uploadProgress > 0" class="w-full max-w-xs">
-            <div class="flex justify-between text-xs text-gray-500 mb-1">
-              <span>Subiendo archivo...</span>
-              <span>{{ uploadProgress }}%</span>
-            </div>
-            <div class="w-full bg-gray-100 rounded-full h-2">
-              <div
-                class="bg-[#177DA6] h-2 rounded-full transition-all duration-300"
-                :style="{ width: `${uploadProgress}%` }"
-              />
-            </div>
           </div>
         </div>
       </div>
 
+      <!-- Footer -->
       <div
         v-if="!isUploading"
-        class="px-6 py-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-3"
+        class="flex justify-end gap-2 px-6 py-4 border-t"
+        style="background: #fdfcfa; border-color: var(--color-base-dark)"
       >
         <button
           @click="$emit('close')"
-          class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none transition-colors"
+          class="px-4 py-2 text-xs font-semibold rounded-lg border"
+          style="border-color: var(--color-base-dark); color: var(--color-muted); background: white"
         >
           Cancelar
         </button>
         <button
           @click="procesarArchivo"
           :disabled="!selectedFile"
-          class="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-[#177DA6] border border-transparent rounded-lg hover:bg-[#126385] focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-colors min-w-[120px]"
+          class="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg text-white disabled:opacity-50"
+          style="background: var(--color-primary)"
         >
-          Subir e Importar
+          Subir e importar
         </button>
       </div>
     </div>
@@ -116,40 +140,30 @@
 
 <script setup>
 import { ref } from 'vue'
-import { usePadronStore } from '@/stores/padronStore'
-import { useToast } from '@/composables/useToast' // 🆕
 import { X, FileUp, Loader2, AlertCircle } from 'lucide-vue-next'
+import { usePadronStore } from '@/stores/padronStore'
 
-const props = defineProps({
-  padron: { type: Object, required: true },
-})
+const props = defineProps({ padron: { type: Object, required: true } })
 const emit = defineEmits(['close', 'imported'])
 
 const padronStore = usePadronStore()
-const toast = useToast() // 🆕
-
 const selectedFile = ref(null)
 const isDragging = ref(false)
 const isUploading = ref(false)
 const errorMessage = ref('')
-const uploadProgress = ref(0) // 🆕
 
-const handleFileSelect = (event) => {
-  validarArchivo(event.target.files[0])
-}
-
-const handleDrop = (event) => {
+const handleFileSelect = (e) => validarArchivo(e.target.files[0])
+const handleDrop = (e) => {
   isDragging.value = false
-  validarArchivo(event.dataTransfer.files[0])
+  validarArchivo(e.dataTransfer.files[0])
 }
 
 const validarArchivo = (file) => {
   errorMessage.value = ''
   if (!file) return
-  const allowedExtensions = ['.csv', '.txt', '.xlsx', '.xls']
-  const isValid = allowedExtensions.some((ext) => file.name.toLowerCase().endsWith(ext))
-  if (!isValid) {
-    errorMessage.value = 'Formato no permitido. Por favor selecciona un archivo CSV, TXT o Excel.'
+  const ext = ['.csv', '.txt', '.xlsx', '.xls']
+  if (!ext.some((e) => file.name.toLowerCase().endsWith(e))) {
+    errorMessage.value = 'Formato no permitido. Usa CSV, TXT o Excel.'
     selectedFile.value = null
     return
   }
@@ -158,24 +172,16 @@ const validarArchivo = (file) => {
 
 const procesarArchivo = async () => {
   if (!selectedFile.value) return
-
   isUploading.value = true
   errorMessage.value = ''
-  uploadProgress.value = 0 // 🆕
-
   try {
-
-    await padronStore.importarCsv(props.padron.id, selectedFile.value, (progress) => {
-      uploadProgress.value = progress
-    })
-    toast.success('¡Importación completada con éxito!') // 🆕 reemplaza alert()
+    await padronStore.importarCsv(props.padron.id, selectedFile.value)
     emit('imported')
     emit('close')
-  } catch (error) {
+  } catch {
     errorMessage.value = padronStore.errorMessage || 'Error crítico al importar el archivo.'
   } finally {
     isUploading.value = false
-    uploadProgress.value = 0
   }
 }
 </script>

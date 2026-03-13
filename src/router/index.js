@@ -26,10 +26,17 @@ const routes = [
     component: () => import('@/views/DashboardPage.vue'),
     meta: { requiresAuth: true },
   },
+  // ... importaciones
   {
     path: '/padrones/:id/datos',
     name: 'PadronDataView',
     component: () => import('@/views/PadronDataView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/padrones/:id/mapa',
+    name: 'PadronMap',
+    component: () => import('@/views/PadronMapView.vue'), // Nueva vista
     meta: { requiresAuth: true },
   },
   {

@@ -1,20 +1,46 @@
 <template>
   <Teleport to="body">
-    <div class="fixed bottom-6 right-6 z-[200] flex flex-col gap-2 pointer-events-none">
+    <div
+      class="fixed z-[100] flex flex-col gap-2 pointer-events-none"
+      style="
+        bottom: 1.25rem;
+        left: 50%;
+        transform: translateX(-50%);
+        width: calc(100% - 2rem);
+        max-width: 360px;
+      "
+    >
       <TransitionGroup name="toast">
         <div
           v-for="toast in toasts"
           :key="toast.id"
-          class="pointer-events-auto flex items-start gap-3 px-4 py-3 rounded-xl shadow-lg border text-sm font-medium max-w-sm w-full"
-          :class="variantClasses[toast.type]"
+          class="pointer-events-auto flex items-start gap-3 px-4 py-3.5 rounded-xl border shadow-lg w-full"
+          style="background: white"
+          :style="borderStyle(toast.type)"
         >
-          <component :is="variantIcons[toast.type]" class="w-4 h-4 mt-0.5 shrink-0" />
-          <span class="flex-1">{{ toast.message }}</span>
-          <button
-            @click="remove(toast.id)"
-            class="shrink-0 opacity-60 hover:opacity-100 transition-opacity"
+          <div
+            class="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 mt-0.5"
+            :style="iconBg(toast.type)"
           >
-            <X class="w-4 h-4" />
+            <CheckCircle2 v-if="toast.type === 'success'" :size="14" style="color: #166534" />
+            <AlertCircle v-else-if="toast.type === 'error'" :size="14" style="color: #991b1b" />
+            <Info v-else :size="14" style="color: var(--color-primary)" />
+          </div>
+          <p class="text-xs font-medium flex-1 leading-relaxed" style="color: var(--color-ink)">
+            {{ toast.message }}
+          </p>
+          <button
+            @click="removeToast(toast.id)"
+            style="
+              color: var(--color-muted);
+              background: none;
+              border: none;
+              cursor: pointer;
+              display: flex;
+              margin-top: 2px;
+            "
+          >
+            <X :size="13" />
           </button>
         </div>
       </TransitionGroup>
@@ -23,40 +49,34 @@
 </template>
 
 <script setup>
-import { CheckCircle2, AlertCircle, AlertTriangle, Info, X } from 'lucide-vue-next'
+import { CheckCircle2, AlertCircle, Info, X } from 'lucide-vue-next'
 import { useToast } from '@/composables/useToast'
-
-const { toasts, remove } = useToast()
-
-const variantClasses = {
-  success: 'bg-green-50 border-green-200 text-green-800',
-  error: 'bg-red-50 border-red-200 text-red-800',
-  warning: 'bg-yellow-50 border-yellow-200 text-yellow-800',
-  info: 'bg-blue-50 border-blue-200 text-blue-800',
-}
-
-const variantIcons = {
-  success: CheckCircle2,
-  error: AlertCircle,
-  warning: AlertTriangle,
-  info: Info,
-}
+const { toasts, removeToast } = useToast()
+const borderStyle = (t) =>
+  t === 'success'
+    ? 'border-color:#BBF7D0;'
+    : t === 'error'
+      ? 'border-color:#FECACA;'
+      : 'border-color:var(--color-base-dark);'
+const iconBg = (t) =>
+  t === 'success'
+    ? 'background:#DCFCE7;'
+    : t === 'error'
+      ? 'background:#FEE2E2;'
+      : 'background:#E0F0F7;'
 </script>
 
 <style scoped>
 .toast-enter-active,
 .toast-leave-active {
-  transition: all 0.3s ease;
+  transition: all 0.25s ease;
 }
 .toast-enter-from {
   opacity: 0;
-  transform: translateX(100%);
+  transform: translateY(8px) scale(0.97);
 }
 .toast-leave-to {
   opacity: 0;
-  transform: translateX(100%);
-}
-.toast-move {
-  transition: transform 0.3s ease;
+  transform: translateY(4px);
 }
 </style>

@@ -1,12 +1,26 @@
 <template>
-  <div class="flex h-full overflow-hidden">
+  <div class="flex h-full overflow-hidden relative">
+    <!-- ── Overlay mobile (cierra sidebar al tocar fuera) ── -->
+    <Transition name="fade">
+      <div
+        v-if="sidebarOpen"
+        class="fixed inset-0 z-30 md:hidden"
+        style="background: rgba(1, 39, 55, 0.5)"
+        @click="sidebarOpen = false"
+      />
+    </Transition>
+
     <!-- ── Sidebar ── -->
     <aside
-      class="w-56 flex-shrink-0 flex flex-col overflow-y-auto"
+      class="fixed md:relative inset-y-0 left-0 z-40 flex flex-col overflow-y-auto transition-transform duration-300 w-56 flex-shrink-0"
+      :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'"
       style="background: var(--color-dark)"
     >
       <!-- Brand -->
-      <div class="px-5 py-5 border-b" style="border-color: rgba(255, 255, 255, 0.08)">
+      <div
+        class="px-5 py-5 border-b flex items-center justify-between"
+        style="border-color: rgba(255, 255, 255, 0.08)"
+      >
         <div class="flex items-center gap-2.5">
           <div
             class="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
@@ -26,9 +40,16 @@
             </div>
           </div>
         </div>
+        <!-- Cerrar sidebar en mobile -->
+        <button
+          class="md:hidden p-1 rounded"
+          style="color: rgba(255, 255, 255, 0.4); background: none; border: none; cursor: pointer"
+          @click="sidebarOpen = false"
+        >
+          <X :size="16" />
+        </button>
       </div>
 
-      <!-- Nav section label -->
       <div
         class="px-5 pt-5 pb-2 text-[9px] font-bold uppercase tracking-widest"
         style="color: rgba(255, 255, 255, 0.25)"
@@ -36,31 +57,16 @@
         Principal
       </div>
 
-      <!-- Nav items -->
       <nav class="px-3 space-y-0.5">
         <button
           v-for="tab in tabs"
           :key="tab.id"
-          @click="activeTab = tab.id"
+          @click="setTab(tab.id)"
           class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all text-left"
           :style="
             activeTab === tab.id
               ? 'background:var(--color-primary);color:white;'
-              : 'color:rgba(255,255,255,0.55);background:transparent;'
-          "
-          @mouseenter="
-            (e) => {
-              if (activeTab !== tab.id) e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
-              e.currentTarget.style.color = 'rgba(255,255,255,0.85)'
-            }
-          "
-          @mouseleave="
-            (e) => {
-              if (activeTab !== tab.id) {
-                e.currentTarget.style.background = 'transparent'
-                e.currentTarget.style.color = 'rgba(255,255,255,0.55)'
-              }
-            }
+              : 'color:rgba(255,255,255,0.55);'
           "
         >
           <component :is="tab.icon" :size="16" style="flex-shrink: 0" />
@@ -68,7 +74,6 @@
         </button>
       </nav>
 
-      <!-- Spacer + user chip -->
       <div class="mt-auto border-t p-3" style="border-color: rgba(255, 255, 255, 0.08)">
         <div
           class="flex items-center gap-2.5 px-2.5 py-2 rounded-lg"
@@ -98,41 +103,39 @@
     </aside>
 
     <!-- ── Main ── -->
-    <div class="flex-1 flex flex-col overflow-hidden" style="background: var(--color-base)">
+    <div class="flex-1 flex flex-col overflow-hidden min-w-0" style="background: var(--color-base)">
       <!-- Topbar -->
       <div
-        class="h-14 flex-shrink-0 flex items-center justify-between px-7 border-b"
+        class="h-14 flex-shrink-0 flex items-center justify-between px-4 md:px-7 border-b"
         style="background: var(--color-base); border-color: var(--color-base-dark)"
       >
-        <!-- Breadcrumb -->
-        <div class="flex items-center gap-2 text-xs" style="color: var(--color-muted)">
-          <span>IIDESOFT</span>
-          <span style="opacity: 0.4">/</span>
-          <span class="font-semibold" style="color: var(--color-ink)">
-            {{ tabs.find((t) => t.id === activeTab)?.label }}
-          </span>
+        <div class="flex items-center gap-3">
+          <!-- Hamburguesa mobile -->
+          <button
+            class="md:hidden p-2 rounded-lg border"
+            style="
+              color: var(--color-muted);
+              border-color: var(--color-base-dark);
+              background: white;
+            "
+            @click="sidebarOpen = true"
+          >
+            <Menu :size="16" />
+          </button>
+          <!-- Breadcrumb -->
+          <div class="flex items-center gap-2 text-xs" style="color: var(--color-muted)">
+            <span class="hidden sm:inline">IIDESOFT</span>
+            <span class="hidden sm:inline" style="opacity: 0.4">/</span>
+            <span class="font-semibold" style="color: var(--color-ink)">{{
+              tabs.find((t) => t.id === activeTab)?.label
+            }}</span>
+          </div>
         </div>
         <!-- Tab switcher -->
-        <div class="flex gap-0.5 p-1 rounded-lg" style="background: var(--color-base-dark)">
-          <button
-            v-for="tab in tabs"
-            :key="tab.id"
-            @click="activeTab = tab.id"
-            class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-medium transition-all"
-            :style="
-              activeTab === tab.id
-                ? 'background:white;color:var(--color-dark);font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,0.08);'
-                : 'background:transparent;color:var(--color-muted);'
-            "
-          >
-            <component :is="tab.icon" :size="12" />
-            {{ tab.label }}
-          </button>
-        </div>
       </div>
 
-      <!-- Contenido scrollable -->
-      <div class="flex-1 overflow-y-auto p-7">
+      <!-- Contenido -->
+      <div class="flex-1 overflow-y-auto p-4 md:p-7">
         <component :is="currentTabComponent" />
       </div>
     </div>
@@ -141,12 +144,13 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { Users, Database } from 'lucide-vue-next'
+import { Users, Database, Menu, X } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/authStore'
 import TabUsuarios from './super-admin/TabUsuarios.vue'
 import TabPadrones from './admin/TabPadrones.vue'
 
 const authStore = useAuthStore()
+const sidebarOpen = ref(false)
 
 const tabs = [
   { id: 'usuarios', label: 'Usuarios', icon: Users, component: TabUsuarios },
@@ -154,6 +158,10 @@ const tabs = [
 ]
 
 const activeTab = ref('usuarios')
+const setTab = (id) => {
+  activeTab.value = id
+  sidebarOpen.value = false
+}
 const currentTabComponent = computed(
   () => tabs.find((t) => t.id === activeTab.value)?.component ?? TabUsuarios,
 )

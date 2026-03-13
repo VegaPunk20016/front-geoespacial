@@ -1,517 +1,327 @@
 <template>
-  <div class="h-screen bg-gray-50 flex flex-col overflow-hidden relative font-sans">
-    <!-- HEADER -->
+  <div class="h-screen bg-gray-50 flex flex-col overflow-hidden font-sans">
     <header
-      class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shrink-0 z-10 shadow-sm"
+      class="bg-white border-b px-6 py-4 flex items-center justify-between shrink-0 z-10 shadow-sm"
     >
       <div class="flex items-center gap-4">
         <button
-          @click="volverAlDashboard"
-          class="p-2 text-gray-400 hover:text-[#177DA6] hover:bg-[#177DA6]/10 rounded-lg transition-colors"
+          @click="router.push('/dashboard')"
+          class="p-2 text-gray-400 hover:text-[#177DA6] rounded-lg transition-colors"
         >
           <ArrowLeft class="w-5 h-5" />
         </button>
         <div>
-          <h1 class="text-xl font-bold text-[#012737] flex items-center gap-2">
-            <Layers class="w-5 h-5 text-[#177DA6]" />
-            Explorador de Padrones IIDESOFT
-          </h1>
-          <p class="text-[10px] text-gray-400 font-mono tracking-tighter uppercase">
-            ID DE CONSULTA: {{ padronId }}
+          <h1 class="text-xl font-bold text-[#012737]">Explorador de Datos</h1>
+          <p class="text-[10px] text-[#177DA6] font-black tracking-widest uppercase">
+            Padrón: {{ nombreDelPadronActual }}
           </p>
         </div>
       </div>
 
-      <div v-if="status === 'success'" class="flex items-center gap-3">
-        <div
-          class="bg-green-50 text-green-700 px-3 py-1.5 rounded-md text-xs font-bold border border-green-100 flex items-center gap-2"
-        >
-          <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-          {{ beneficiariosFiltrados.length }} Registros Sincronizados
-        </div>
-      </div>
+      <button
+        @click="router.push(`/padrones/${route.params.id}/mapa`)"
+        class="flex items-center gap-2 px-4 py-2 bg-[#177DA6] text-white rounded-lg text-xs font-bold shadow-md hover:bg-[#012737] transition-all"
+      >
+        <Map class="w-4 h-4" /> Ver en Mapa
+      </button>
     </header>
 
-    <!-- BANNER DE ERROR NO CRÍTICO (cartografía) -->
-    <div
-      v-if="errorCartografia"
-      class="bg-yellow-50 border-b border-yellow-200 px-6 py-2 text-xs text-yellow-700 font-medium flex items-center gap-2"
-    >
-      <AlertTriangle class="w-3.5 h-3.5" />
-      No se pudo cargar la cartografía base. Los marcadores siguen disponibles.
-    </div>
+    <main class="flex-1 overflow-y-auto bg-white">
+      <div v-if="status === 'loading'" class="h-full flex flex-col items-center justify-center">
+        <Loader2 class="w-10 h-10 text-[#177DA6] animate-spin mb-4" />
+        <p class="text-xs font-bold text-gray-400 uppercase tracking-widest">
+          Sincronizando registros...
+        </p>
+      </div>
 
-    <main class="flex-1 flex overflow-hidden">
-      <!-- TABLA -->
-      <section class="w-full lg:w-3/5 overflow-y-auto border-r border-gray-200 bg-white z-10">
-        <div v-if="status === 'loading'" class="h-full flex flex-col items-center justify-center">
-          <Loader2 class="w-10 h-10 text-[#177DA6] animate-spin mb-4" />
-          <p class="text-xs font-bold text-gray-400 uppercase tracking-widest">
-            Cargando base de datos...
-          </p>
-        </div>
+      <div v-else class="p-0">
+        <table class="w-full text-left">
+          <thead class="sticky top-0 bg-white z-20 shadow-sm border-b">
+            <tr>
+              <th class="px-6 py-4 text-[10px] font-black text-gray-400 uppercase">
+                Identificador
+              </th>
+              <th class="px-6 py-4 text-[10px] font-black text-gray-400 uppercase">
+                Información Principal
+              </th>
+              <th class="px-6 py-4 text-[10px] font-black text-gray-400 uppercase">Ubicación</th>
+              <th class="px-6 py-4 text-[10px] font-black text-gray-400 uppercase text-right">
+                Ficha
+              </th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-50">
+            <tr
+              v-for="b in beneficiariosFiltrados"
+              :key="b.id"
+              class="hover:bg-gray-50 cursor-pointer group"
+              @click="registroSeleccionado = b"
+            >
+              <!-- Identificador — solo si tiene clave -->
+              <td class="px-6 py-4">
+                <span
+                  v-if="tieneValor(b.clave_unica)"
+                  class="text-[10px] font-mono text-gray-500 bg-gray-50 px-2 py-1 rounded border border-gray-100"
+                >
+                  {{ b.clave_unica }}
+                </span>
+                <span v-else class="text-[10px] text-gray-300 italic">—</span>
+              </td>
 
-        <div v-else-if="status === 'success'" class="p-0">
-          <table class="w-full text-left border-separate border-spacing-0">
-            <thead class="sticky top-0 bg-white z-20 shadow-sm">
-              <tr>
-                <th
-                  class="px-6 py-4 text-[10px] font-black text-gray-400 uppercase border-b border-gray-100"
+              <!-- Nombre — fallback a municipio + sección si no hay nombre -->
+              <td class="px-6 py-4 font-bold text-[#012737] text-sm">
+                <span v-if="tieneValor(b.nombre_completo)">{{ b.nombre_completo }}</span>
+                <span
+                  v-else-if="tieneValor(b.municipio) || tieneValor(b.seccion)"
+                  class="flex items-center gap-1.5"
                 >
-                  Identificador
-                </th>
-                <th
-                  v-if="mostrarColumnaNombre"
-                  class="px-6 py-4 text-[10px] font-black text-gray-400 uppercase border-b border-gray-100"
-                >
-                  Información Principal
-                </th>
-                <th
-                  class="px-6 py-4 text-[10px] font-black text-gray-400 uppercase border-b border-gray-100"
-                >
-                  Ubicación
-                </th>
-                <th
-                  class="px-6 py-4 text-[10px] font-black text-gray-400 uppercase border-b border-gray-100 text-right"
-                >
-                  Detalle
-                </th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-50">
-              <tr
-                v-for="b in beneficiariosFiltrados"
-                :key="b.id"
-                class="group hover:bg-[#177DA6]/5 transition-colors cursor-pointer"
-                tabindex="0"
-                role="button"
-                :aria-label="`Ver detalles de ${b.nombre_completo || b.clave_unica}`"
-                @click="abrirDetalles(b)"
-                @keydown.enter="abrirDetalles(b)"
-              >
-                <td class="px-6 py-4">
+                  <span v-if="tieneValor(b.municipio)" class="text-[#012737]">{{
+                    b.municipio
+                  }}</span>
                   <span
-                    class="text-[10px] font-mono text-gray-500 bg-gray-50 px-2 py-1 rounded border border-gray-200"
+                    v-if="tieneValor(b.seccion)"
+                    class="text-[10px] font-bold px-2 py-0.5 rounded"
+                    style="background: #e0f0f7; color: #177da6"
+                    >Sec. {{ b.seccion }}</span
                   >
-                    {{ b.clave_unica || 'SIN_CLAVE' }}
-                  </span>
-                </td>
-                <td v-if="mostrarColumnaNombre" class="px-6 py-4">
-                  <p
-                    class="text-sm font-bold text-[#012737] group-hover:text-[#177DA6] truncate max-w-[200px]"
-                  >
-                    {{ b.nombre_completo }}
-                  </p>
-                </td>
-                <td class="px-6 py-4">
-                  <div class="flex items-center gap-2 text-xs text-gray-500 font-medium">
-                    <MapPin class="w-3 h-3 text-[#177DA6]" />
-                    {{ b.municipio || 'General' }}
-                  </div>
-                </td>
-                <td class="px-6 py-4 text-right">
-                  <button
-                    class="p-2 text-gray-300 group-hover:text-[#177DA6] transition-colors"
-                    :aria-label="`Abrir detalles de ${b.nombre_completo || b.clave_unica}`"
-                  >
-                    <ChevronRight class="w-5 h-5" />
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
+                </span>
+                <span v-else class="text-gray-300 font-normal italic text-xs">—</span>
+              </td>
 
-      <!-- MAPA -->
-      <section class="hidden lg:block lg:w-2/5 bg-gray-100 relative border-l border-gray-200 z-0">
-        <div ref="mapContainer" class="absolute inset-0 z-0"></div>
-        <div
-          v-if="status === 'loading'"
-          class="absolute inset-0 z-10 bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center"
-        >
-          <Loader2 class="w-10 h-10 text-[#177DA6] animate-spin mb-4" />
-          <p class="text-xs font-bold text-gray-400 uppercase tracking-widest">
-            Generando cartografía...
-          </p>
-        </div>
-      </section>
+              <!-- Municipio -->
+              <td class="px-6 py-4 text-xs text-gray-500">
+                {{ tieneValor(b.municipio) ? b.municipio : '—' }}
+              </td>
+
+              <td class="px-6 py-4 text-right">
+                <ChevronRight class="w-4 h-4 ml-auto text-gray-300 group-hover:text-[#177DA6]" />
+              </td>
+            </tr>
+
+            <!-- Estado vacío -->
+            <tr v-if="beneficiariosFiltrados.length === 0">
+              <td colspan="4" class="py-16 text-center">
+                <Database class="w-8 h-8 mx-auto mb-3 text-gray-200" />
+                <p class="text-xs text-gray-400">No hay registros con datos completos.</p>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </main>
 
-    <!-- PANEL LATERAL DE DETALLE -->
-    <div v-if="registroSeleccionado" class="fixed inset-0 z-[100] overflow-hidden">
-      <div class="absolute inset-0 bg-[#012737]/60 transition-opacity" @click="cerrarDetalle"></div>
-      <div class="absolute inset-y-0 right-0 flex max-w-full pl-10">
-        <div class="w-screen max-w-md">
-          <div class="flex h-full flex-col bg-white shadow-2xl">
-            <div class="bg-[#012737] p-8 text-white">
-              <div class="flex items-start justify-between">
-                <h2 class="text-xl font-bold leading-tight">Ficha Técnica</h2>
-                <button
-                  @click="cerrarDetalle"
-                  class="p-1 hover:bg-white/10 rounded-full transition-colors"
-                  aria-label="Cerrar panel"
-                >
-                  <X class="h-6 w-6" />
-                </button>
-              </div>
-              <div class="mt-6 flex items-center gap-3">
-                <div
-                  class="w-12 h-12 bg-[#177DA6] rounded-xl flex items-center justify-center shadow-lg"
-                >
-                  <Database class="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <p v-if="nombreValido" class="text-sm font-bold truncate max-w-[280px]">
-                    {{ registroSeleccionado.nombre_completo }}
-                  </p>
-                  <p v-else class="text-sm font-bold text-gray-400 italic">Registro Geográfico</p>
-                  <p class="text-[10px] text-[#177DA6] font-mono uppercase tracking-widest">
-                    Atributos Dinámicos
-                  </p>
-                </div>
-              </div>
-            </div>
+    <!-- Panel lateral — Ficha Técnica -->
+    <Transition name="slide">
+      <div v-if="registroSeleccionado" class="fixed inset-0 z-[100] flex justify-end">
+        <div
+          class="absolute inset-0 bg-[#012737]/40 backdrop-blur-sm"
+          @click="registroSeleccionado = null"
+        ></div>
 
-            <div class="flex-1 overflow-y-auto p-6 bg-gray-50/50">
-              <div class="space-y-3">
-                <div
-                  v-for="attr in atributosDinamicos"
-                  :key="attr.key"
-                  class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-all group"
-                >
-                  <p
-                    class="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1 group-hover:text-[#177DA6]"
-                  >
-                    {{ attr.key }}
-                  </p>
-                  <p class="text-sm text-gray-700 font-semibold break-words">{{ attr.value }}</p>
-                </div>
-              </div>
-            </div>
-
-            <div class="p-6 bg-white border-t border-gray-100">
-              <div
-                v-if="registroSeleccionado.latitud"
-                class="bg-[#177DA6]/5 p-4 rounded-xl border border-[#177DA6]/20 flex items-center justify-between"
+        <div class="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col">
+          <!-- Header -->
+          <div class="bg-[#012737] p-6 text-white shrink-0">
+            <div class="flex items-start justify-between mb-6">
+              <h2 class="text-xl font-bold tracking-tight">Ficha Técnica</h2>
+              <button
+                @click="registroSeleccionado = null"
+                class="p-1 hover:bg-white/10 rounded-full transition-colors"
               >
-                <div class="flex items-center gap-3">
-                  <div class="p-2 bg-[#177DA6] rounded-lg">
-                    <Navigation class="w-4 h-4 text-white" />
-                  </div>
-                  <div>
-                    <p class="text-[10px] text-gray-400 font-bold uppercase">Ubicación GPS</p>
-                    <p class="text-xs font-mono font-bold text-[#177DA6]">
-                      {{ registroSeleccionado.latitud }}, {{ registroSeleccionado.longitud }}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  @click="enfocarEnMapa"
-                  class="text-[10px] font-bold text-[#177DA6] hover:underline uppercase"
-                >
-                  Enfocar
-                </button>
+                <X class="w-6 h-6" />
+              </button>
+            </div>
+            <div class="flex items-center gap-4">
+              <div
+                class="w-12 h-12 bg-[#177DA6] rounded-xl flex items-center justify-center shadow-inner"
+              >
+                <Database class="w-6 h-6 text-white" />
               </div>
+              <div class="min-w-0">
+                <p class="text-xs font-black text-[#177DA6] uppercase tracking-widest mb-0.5">
+                  Registro
+                </p>
+                <p class="text-sm font-bold truncate">
+                  {{
+                    tieneValor(registroSeleccionado.nombre_completo)
+                      ? registroSeleccionado.nombre_completo
+                      : registroSeleccionado.clave_unica || 'Sin identificador'
+                  }}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Campos base con valor -->
+          <div class="flex-1 overflow-y-auto p-6 bg-gray-50/50">
+            <div class="space-y-3">
+              <p class="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-4">
+                Atributos del Registro
+              </p>
+
+              <!-- Campos fijos solo si tienen valor -->
+              <template v-for="attr in camposFijos" :key="attr.key">
+                <div
+                  class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex justify-between items-center group hover:border-[#177DA6]/30 transition-all"
+                >
+                  <span
+                    class="text-[10px] font-bold text-gray-400 uppercase tracking-wider group-hover:text-[#177DA6]"
+                  >
+                    {{ attr.label }}
+                  </span>
+                  <span class="text-sm font-black text-[#012737]">{{ attr.value }}</span>
+                </div>
+              </template>
+
+              <!-- Separador si hay datos_generales -->
+              <p
+                v-if="atributosDinamicos.length > 0"
+                class="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] pt-4 pb-2"
+              >
+                Datos Adicionales
+              </p>
+
+              <!-- datos_generales filtrados -->
+              <div
+                v-for="attr in atributosDinamicos"
+                :key="attr.key"
+                class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex justify-between items-center group hover:border-[#177DA6]/30 transition-all"
+              >
+                <span
+                  class="text-[10px] font-bold text-gray-400 uppercase tracking-wider group-hover:text-[#177DA6]"
+                >
+                  {{ attr.key }}
+                </span>
+                <span class="text-sm font-black text-[#012737]">{{ attr.value }}</span>
+              </div>
+
+              <!-- Sin datos -->
+              <div
+                v-if="camposFijos.length === 0 && atributosDinamicos.length === 0"
+                class="py-8 text-center text-xs text-gray-400"
+              >
+                Este registro no tiene datos adicionales.
+              </div>
+            </div>
+          </div>
+
+          <!-- Footer municipio -->
+          <div
+            v-if="tieneValor(registroSeleccionado.municipio)"
+            class="p-6 bg-white border-t border-gray-100"
+          >
+            <div class="flex items-center gap-3 text-gray-500">
+              <MapPin class="w-4 h-4 text-[#177DA6]" />
+              <span class="text-xs font-bold uppercase tracking-wide">
+                {{ registroSeleccionado.municipio }}
+              </span>
             </div>
           </div>
         </div>
       </div>
-    </div>
+    </Transition>
   </div>
 </template>
 
 <script setup>
-import { onMounted, onUnmounted, computed, ref, watch, shallowRef, nextTick } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { usePadronStore } from '@/stores/padronStore'
-import {
-  ArrowLeft,
-  Layers,
-  Loader2,
-  Database,
-  MapPin,
-  ChevronRight,
-  X,
-  Navigation,
-  AlertTriangle,
-} from 'lucide-vue-next'
+import { ArrowLeft, Map, Loader2, ChevronRight, X, Database, MapPin } from 'lucide-vue-next'
 
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
-import 'leaflet.markercluster/dist/MarkerCluster.css'
-import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
-import 'leaflet.markercluster'
-
-// ─── ROUTER & STORE ──────────────────────────────────────────────────────────
 const route = useRoute()
 const router = useRouter()
 const padronStore = usePadronStore()
-const padronId = computed(() => route.params.id)
 const { beneficiarios, status } = storeToRefs(padronStore)
 
-// ─── ESTADO LOCAL ─────────────────────────────────────────────────────────────
 const registroSeleccionado = ref(null)
-const errorCartografia = ref(false)
 
-// ─── MAPA (shallowRef para objetos Leaflet no reactivos) ─────────────────────
-const mapContainer = ref(null)
-const map = shallowRef(null)
-const limitesLayer = shallowRef(null)
-const clusterLayer = shallowRef(null) // 🆕 Cluster en lugar de featureGroup simple
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
-// ─── COMPUTED ─────────────────────────────────────────────────────────────────
+/**
+ * Devuelve true si el valor tiene contenido real:
+ * - No null / undefined
+ * - No string vacío o solo espacios
+ * - No "SIN NOMBRE", "N/A", "null", "undefined", "0" como texto, "-", "—"
+ */
+const VACIOS = new Set(['', 'sin nombre', 'n/a', 'null', 'undefined', '-', '—', 'none', 'na', '0'])
 
-/** Filtra registros sin ID (basura) */
-const beneficiariosFiltrados = computed(() => beneficiarios.value.filter((b) => b.id !== null))
+const tieneValor = (v) => {
+  if (v === null || v === undefined) return false
+  const s = String(v).trim().toLowerCase()
+  return s.length > 0 && !VACIOS.has(s)
+}
 
-/** Decide si mostrar columna de nombres */
-const mostrarColumnaNombre = computed(() =>
-  beneficiariosFiltrados.value.some((b) => {
-    const nombre = b.nombre_completo?.trim().toUpperCase()
-    return nombre && nombre !== 'SIN NOMBRE' && nombre !== ''
-  }),
-)
-
-/** Nombre válido del registro seleccionado — evita lógica en template */
-const nombreValido = computed(() => {
-  const nombre = registroSeleccionado.value?.nombre_completo?.trim().toUpperCase()
-  return nombre && nombre !== 'SIN NOMBRE' && nombre !== ''
+// ── Nombre del padrón ─────────────────────────────────────────────────────────
+const nombreDelPadronActual = computed(() => {
+  const padron = padronStore.padrones?.find((p) => p.id === route.params.id)
+  return padron ? padron.nombre_padron : 'Cargando...'
 })
 
-/** Parsea datos_generales UNA sola vez al seleccionar, no en cada render */
+// ── Tabla: solo filas con al menos municipio o clave ─────────────────────────
+const beneficiariosFiltrados = computed(() =>
+  beneficiarios.value.filter(
+    (b) =>
+      b.id !== null &&
+      (tieneValor(b.clave_unica) || tieneValor(b.municipio) || tieneValor(b.seccion)),
+  ),
+)
+
+// ── Ficha: campos fijos con valor ─────────────────────────────────────────────
+const camposFijos = computed(() => {
+  const r = registroSeleccionado.value
+  if (!r) return []
+  const candidatos = [
+    { key: 'clave_unica', label: 'Clave Única' },
+    { key: 'nombre_completo', label: 'Nombre' },
+    { key: 'municipio', label: 'Municipio' },
+    { key: 'seccion', label: 'Sección' },
+    { key: 'latitud', label: 'Latitud' },
+    { key: 'longitud', label: 'Longitud' },
+  ]
+  return candidatos
+    .filter((c) => tieneValor(r[c.key]))
+    .map((c) => ({ key: c.key, label: c.label, value: r[c.key] }))
+})
+
+// ── Ficha: datos_generales filtrados ─────────────────────────────────────────
 const atributosDinamicos = computed(() => {
   if (!registroSeleccionado.value?.datos_generales) return []
-  const rawData = registroSeleccionado.value.datos_generales
   try {
-    const data = typeof rawData === 'string' ? JSON.parse(rawData) : rawData
-    return Object.entries(data).map(([key, value]) => ({
-      key: key.replace(/_/g, ' ').toUpperCase(),
-      value: value ?? 'N/A',
-    }))
+    const raw = registroSeleccionado.value.datos_generales
+    const data = typeof raw === 'string' ? JSON.parse(raw) : raw
+    return Object.entries(data)
+      .filter(([, v]) => tieneValor(v))
+      .map(([k, v]) => ({
+        key: k.replace(/_/g, ' ').toUpperCase(),
+        value: v,
+      }))
   } catch {
-    console.warn('datos_generales tiene formato inválido')
     return []
   }
 })
 
-// ─── MAPA: INICIALIZACIÓN ─────────────────────────────────────────────────────
-const inicializarMapa = () => {
-  if (!mapContainer.value) return
-
-  map.value = L.map(mapContainer.value).setView([23.6345, -102.5528], 5)
-
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; CARTO',
-    subdomains: 'abcd',
-    maxZoom: 20,
-  }).addTo(map.value)
-
-  // 🆕 Crear capa de clusters con opciones de estilo
-  clusterLayer.value = L.markerClusterGroup({
-    showCoverageOnHover: false,
-    maxClusterRadius: 50,
-    iconCreateFunction(cluster) {
-      const count = cluster.getChildCount()
-      return L.divIcon({
-        html: `<div class="cluster-icon">${count}</div>`,
-        className: 'custom-cluster',
-        iconSize: L.point(36, 36),
-      })
-    },
-  })
-
-  clusterLayer.value.addTo(map.value)
-}
-
-// ─── MAPA: FRONTERAS ─────────────────────────────────────────────────────────
-const cargarFronterasMunicipales = async () => {
-  if (!map.value) return
-  try {
-    const response = await fetch('/data/edomex.json')
-    if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    const data = await response.json()
-
-    limitesLayer.value = L.geoJSON(data, {
-      style: {
-        color: '#012737',
-        weight: 1.5,
-        opacity: 0.6,
-        fillColor: '#177DA6',
-        fillOpacity: 0.05,
-        dashArray: '4 4',
-      },
-      onEachFeature(feature, layer) {
-        const nombre = feature.properties.NOMGEO || 'Municipio'
-        layer.bindTooltip(`<div class="text-xs font-bold uppercase">${nombre}</div>`, {
-          sticky: true,
-        })
-      },
-    }).addTo(map.value)
-
-    errorCartografia.value = false
-  } catch (e) {
-    console.warn('Límites no cargados:', e)
-    errorCartografia.value = true // 🆕 Muestra banner al usuario
-  }
-}
-
-// ─── MAPA: MARCADORES CON CLUSTER ────────────────────────────────────────────
-const dibujarMarcadores = () => {
-  if (!map.value || !clusterLayer.value) return
-
-  clusterLayer.value.clearLayers()
-  let hasValidCoords = false
-
-  beneficiariosFiltrados.value.forEach((b) => {
-    const lat = parseFloat(b.latitud)
-    const lng = parseFloat(b.longitud)
-    if (isNaN(lat) || isNaN(lng)) return
-
-    hasValidCoords = true
-
-    const customPin = L.divIcon({
-      className: 'bg-transparent border-0',
-      html: `<div style="
-        width:16px;height:16px;
-        background:#177DA6;
-        border-radius:50%;
-        border:2px solid white;
-        box-shadow:0 2px 6px rgba(0,0,0,0.3);
-        cursor:pointer;
-        transition:transform .15s;
-      "></div>`,
-      iconSize: [16, 16],
-      iconAnchor: [8, 8],
-    })
-
-    const marker = L.marker([lat, lng], { icon: customPin })
-    marker.bindTooltip(
-      `<div class="text-xs font-sans"><strong>${b.nombre_completo || b.clave_unica}</strong></div>`,
-    )
-    marker.on('click', () => abrirDetalles(b))
-
-    clusterLayer.value.addLayer(marker) // 🆕 Agrega al cluster, no al mapa directo
-  })
-
-  if (hasValidCoords) {
-    map.value.fitBounds(clusterLayer.value.getBounds(), { padding: [50, 50] })
-  }
-}
-
-// ─── MAPA: ENFOCAR REGISTRO ───────────────────────────────────────────────────
-const enfocarEnMapa = () => {
-  const { latitud, longitud } = registroSeleccionado.value ?? {}
-  const lat = parseFloat(latitud)
-  const lng = parseFloat(longitud)
-  if (!map.value || isNaN(lat) || isNaN(lng)) return
-  map.value.flyTo([lat, lng], 18, { duration: 1 })
-}
-
-// ─── WATCHERS ─────────────────────────────────────────────────────────────────
-
-// 🆕 Observa solo la longitud del array — evita deep: true costoso
-watch(
-  () => beneficiariosFiltrados.value.length,
-  (newLen) => {
-    if (newLen > 0) dibujarMarcadores()
-  },
-)
-
-// Cuando se selecciona un registro con coordenadas, vuela al punto
-watch(registroSeleccionado, (nuevo) => {
-  if (!map.value || !nuevo) return
-  const lat = parseFloat(nuevo.latitud)
-  const lng = parseFloat(nuevo.longitud)
-  if (isNaN(lat) || isNaN(lng)) return
-  map.value.flyTo([lat, lng], 16, { duration: 1.5 })
-})
-
-// ─── TECLADO: CIERRE CON ESCAPE ───────────────────────────────────────────────
-const onKeydown = (e) => {
-  if (e.key === 'Escape') cerrarDetalle()
-}
-
-// ─── ACCIONES ─────────────────────────────────────────────────────────────────
-const abrirDetalles = (reg) => {
-  registroSeleccionado.value = reg
-}
-
-const cerrarDetalle = () => {
-  registroSeleccionado.value = null
-}
-
-const volverAlDashboard = () => router.push('/dashboard')
-
-// ─── LIFECYCLE ────────────────────────────────────────────────────────────────
-onMounted(async () => {
-  padronStore.fetchBeneficiarios(padronId.value)
-
-  // 🆕 nextTick garantiza que el DOM esté listo — sin setTimeout arbitrario
-  await nextTick()
-  inicializarMapa()
-  cargarFronterasMunicipales()
-  if (beneficiariosFiltrados.value.length > 0) dibujarMarcadores()
-
-  document.addEventListener('keydown', onKeydown)
-})
-
-onUnmounted(() => {
-  // 🆕 Limpia el mapa para evitar memory leaks
-  map.value?.remove()
-  map.value = null
-  clusterLayer.value = null
-  limitesLayer.value = null
-
-  document.removeEventListener('keydown', onKeydown)
+// ── Lifecycle ─────────────────────────────────────────────────────────────────
+onMounted(() => {
+  padronStore.fetchBeneficiarios(route.params.id)
 })
 </script>
 
 <style scoped>
+.slide-enter-active,
+.slide-leave-active {
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.slide-enter-from,
+.slide-leave-to {
+  transform: translateX(100%);
+  opacity: 0;
+}
 ::-webkit-scrollbar {
-  width: 5px;
+  width: 6px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: #e2e8f0;
   border-radius: 10px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #177da6;
-}
-
-:deep(.leaflet-tooltip) {
-  background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.5rem;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-  padding: 8px 12px;
-}
-
-/* 🆕 Estilos del cluster personalizado */
-:deep(.custom-cluster) {
-  background: transparent;
-  border: none;
-}
-
-:deep(.cluster-icon) {
-  width: 36px;
-  height: 36px;
-  background: #177da6;
-  color: white;
-  border-radius: 50%;
-  border: 2px solid white;
-  box-shadow: 0 2px 10px rgba(23, 125, 166, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  font-weight: 800;
-  font-family: monospace;
-  transition: transform 0.15s;
-}
-
-:deep(.cluster-icon:hover) {
-  transform: scale(1.15);
 }
 </style>

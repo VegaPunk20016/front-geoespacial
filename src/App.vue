@@ -7,7 +7,7 @@ import AppConfirmModal from './components/AppConfirmModal.vue'
 
 <template>
   <div class="h-screen flex flex-col bg-base overflow-x-hidden overflow-y-auto">
-    <NavBar />
+    <NavBar shrink-0 />
     <main class="grow w-full max-w-[1200px] mx-auto px-6 py-6 md:py-4">
       <router-view />
     </main>

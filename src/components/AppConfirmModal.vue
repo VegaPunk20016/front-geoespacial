@@ -1,40 +1,61 @@
 <template>
   <Teleport to="body">
     <Transition name="fade">
-      <div v-if="isOpen" class="fixed inset-0 z-[150] flex items-center justify-center p-4">
-        <!-- Backdrop -->
-        <div class="absolute inset-0 bg-[#012737]/60 backdrop-blur-sm" @click="cancel" />
-
-        <!-- Modal -->
-        <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
-          <!-- Header con icono -->
-          <div class="p-6 pb-4 flex flex-col items-center text-center">
+      <div
+        v-if="isOpen"
+        class="fixed inset-0 z-[90] flex items-end sm:items-center justify-center p-0 sm:p-4"
+        style="background: rgba(1, 39, 55, 0.55); backdrop-filter: blur(4px)"
+      >
+        <div
+          class="w-full sm:max-w-sm rounded-t-2xl sm:rounded-xl border overflow-hidden shadow-2xl"
+          style="background: white; border-color: var(--color-base-dark)"
+        >
+          <div class="px-5 pt-5 pb-4">
+            <!-- Ícono -->
             <div
-              class="w-12 h-12 rounded-full flex items-center justify-center mb-4"
-              :class="iconBgClass"
+              class="w-10 h-10 rounded-xl flex items-center justify-center mb-4"
+              :style="options.variant === 'danger' ? 'background:#FEE2E2;' : 'background:#E0F0F7;'"
             >
-              <component :is="iconComponent" class="w-6 h-6" :class="iconColorClass" />
+              <AlertTriangle
+                v-if="options.variant === 'danger'"
+                :size="20"
+                style="color: #991b1b"
+              />
+              <HelpCircle v-else :size="20" style="color: var(--color-primary)" />
             </div>
-            <h3 class="text-lg font-bold text-gray-900">
-              {{ options.title || '¿Estás seguro?' }}
+
+            <!-- Título -->
+            <h3 class="text-sm font-bold mb-1" style="color: var(--color-dark)">
+              {{ options.title || 'Confirmación' }}
             </h3>
-            <p class="text-sm text-gray-500 mt-1">
-              {{ options.message || 'Esta acción no se puede deshacer.' }}
+
+            <!-- Mensaje -->
+            <p class="text-xs leading-relaxed" style="color: var(--color-muted)">
+              {{ options.message || '¿Deseas continuar?' }}
             </p>
           </div>
 
-          <!-- Acciones -->
-          <div class="px-6 pb-6 flex gap-3">
+          <!-- Botones -->
+          <div class="flex gap-2 px-5 pb-5">
             <button
               @click="cancel"
-              class="flex-1 px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-300"
+              class="flex-1 py-2.5 text-xs font-semibold rounded-lg border transition-all"
+              style="
+                border-color: var(--color-base-dark);
+                color: var(--color-muted);
+                background: white;
+              "
             >
               {{ options.cancelText || 'Cancelar' }}
             </button>
             <button
               @click="accept"
-              class="flex-1 px-4 py-2.5 text-sm font-bold text-white rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2"
-              :class="confirmBtnClass"
+              class="flex-1 py-2.5 text-xs font-semibold rounded-lg text-white transition-all"
+              :style="
+                options.variant === 'danger'
+                  ? 'background:#DC2626;'
+                  : 'background:var(--color-primary);'
+              "
             >
               {{ options.confirmText || 'Confirmar' }}
             </button>
@@ -46,58 +67,9 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
-import { AlertTriangle, Trash2, Info } from 'lucide-vue-next'
+import { AlertTriangle, HelpCircle } from 'lucide-vue-next'
 import { useConfirm } from '@/composables/useConfirm'
 
+// El composable expone: isOpen, options (objeto), accept, cancel
 const { isOpen, options, accept, cancel } = useConfirm()
-
-const variant = computed(() => options.value.variant || 'danger')
-
-const iconComponent = computed(
-  () =>
-    ({
-      danger: Trash2,
-      warning: AlertTriangle,
-      info: Info,
-    })[variant.value],
-)
-
-const iconBgClass = computed(
-  () =>
-    ({
-      danger: 'bg-red-100',
-      warning: 'bg-yellow-100',
-      info: 'bg-blue-100',
-    })[variant.value],
-)
-
-const iconColorClass = computed(
-  () =>
-    ({
-      danger: 'text-red-600',
-      warning: 'text-yellow-600',
-      info: 'text-blue-600',
-    })[variant.value],
-)
-
-const confirmBtnClass = computed(
-  () =>
-    ({
-      danger: 'bg-red-600 hover:bg-red-700 focus:ring-red-500',
-      warning: 'bg-yellow-500 hover:bg-yellow-600 focus:ring-yellow-400',
-      info: 'bg-[#177DA6] hover:bg-[#126385] focus:ring-[#177DA6]',
-    })[variant.value],
-)
 </script>
-
-<style scoped>
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.2s ease;
-}
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-</style>

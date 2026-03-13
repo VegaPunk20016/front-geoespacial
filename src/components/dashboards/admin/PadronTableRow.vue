@@ -1,62 +1,95 @@
 <template>
-  <tr class="hover:bg-gray-50/80 transition-colors group">
-    <td class="px-6 py-4">
-      <div class="flex flex-col">
-        <span class="text-sm font-bold text-gray-900">{{ padron.nombre_padron }}</span>
-        <span class="text-xs text-gray-500 truncate max-w-xs mt-0.5" :title="padron.descripcion">
-          {{ padron.descripcion || 'Sin descripción' }}
-        </span>
-      </div>
+  <tr style="border-bottom: 1px solid #f0ede7" class="transition-colors hover:bg-[#FAFAF8]">
+    <!-- Nombre -->
+    <td class="px-5 py-4">
+      <p class="text-sm font-semibold" style="color: var(--color-ink)">
+        {{ padron.nombre_padron }}
+      </p>
+      <p
+        v-if="padron.descripcion"
+        class="text-[11px] mt-0.5 line-clamp-1"
+        style="color: var(--color-muted)"
+      >
+        {{ padron.descripcion }}
+      </p>
     </td>
 
-    <td class="px-6 py-4 whitespace-nowrap">
-      <span
-        class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-[#177DA6]/10 text-[#177DA6] border border-[#177DA6]/20"
-      >
-        {{ padron.categoria || 'General' }}
+    <!-- Categoría -->
+    <td class="px-5 py-4">
+      <span class="text-[10px] font-semibold px-2 py-0.5 rounded tracking-wide" :style="catStyle">
+        {{ padron.categoria || '—' }}
       </span>
     </td>
 
-    <td class="px-6 py-4 whitespace-nowrap">
-      <div class="flex items-center text-sm text-gray-600">
-        <MapPin class="w-4 h-4 mr-1.5 text-gray-400" />
-        {{ padron.entidad_federativa }}
-      </div>
+    <!-- Entidad -->
+    <td class="px-5 py-4 text-xs" style="color: var(--color-muted)">
+      {{ padron.entidad_federativa || '—' }}
     </td>
 
-    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-      <div class="flex items-center">
-        <Calendar class="w-4 h-4 mr-1.5 text-gray-400" />
-        {{ formatearFecha(padron.created_at) }}
-      </div>
+    <!-- Fecha -->
+    <td class="px-5 py-4 text-xs" style="color: var(--color-muted)">
+      {{ formatDate(padron.created_at) }}
     </td>
 
-    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-      <div class="flex items-center gap-2 justify-end">
+    <!-- Acciones -->
+    <td class="px-5 py-4">
+      <div class="flex items-center gap-1.5 justify-end">
         <button
           @click="$emit('ver-datos', padron)"
-          class="flex items-center gap-1.5 text-gray-600 hover:text-[#177DA6] bg-white hover:bg-gray-100 border border-transparent hover:border-gray-200 px-3 py-1.5 rounded-md transition-all shadow-sm group-hover:shadow"
-          title="Ver registros del padrón"
+          class="px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all"
+          style="border-color: var(--color-base-dark); color: var(--color-muted); background: white"
+          @mouseenter="
+            (e) => {
+              e.currentTarget.style.borderColor = 'var(--color-primary)'
+              e.currentTarget.style.color = 'var(--color-primary)'
+            }
+          "
+          @mouseleave="
+            (e) => {
+              e.currentTarget.style.borderColor = 'var(--color-base-dark)'
+              e.currentTarget.style.color = 'var(--color-muted)'
+            }
+          "
         >
-          <Eye class="w-4 h-4" />
-          <span>Ver</span>
+          Ver
         </button>
-
         <button
           @click="$emit('importar', padron)"
-          class="flex items-center gap-1.5 text-[#177DA6] hover:text-[#012737] bg-white hover:bg-gray-100 border border-transparent hover:border-gray-200 px-3 py-1.5 rounded-md transition-all shadow-sm group-hover:shadow"
-          title="Cargar archivo CSV"
+          class="px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all"
+          style="border-color: var(--color-primary); color: var(--color-primary); background: white"
+          @mouseenter="
+            (e) => {
+              e.currentTarget.style.background = 'var(--color-primary)'
+              e.currentTarget.style.color = 'white'
+            }
+          "
+          @mouseleave="
+            (e) => {
+              e.currentTarget.style.background = 'white'
+              e.currentTarget.style.color = 'var(--color-primary)'
+            }
+          "
         >
-          <FileUp class="w-4 h-4" />
-          <span>Importar</span>
+          Importar
         </button>
-
         <button
           @click="$emit('eliminar', padron)"
-          class="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
-          title="Eliminar padrón"
+          class="p-1.5 rounded-lg transition-all"
+          style="color: var(--color-muted); background: transparent"
+          @mouseenter="
+            (e) => {
+              e.currentTarget.style.background = '#FEE2E2'
+              e.currentTarget.style.color = '#991B1B'
+            }
+          "
+          @mouseleave="
+            (e) => {
+              e.currentTarget.style.background = 'transparent'
+              e.currentTarget.style.color = 'var(--color-muted)'
+            }
+          "
         >
-          <Trash2 class="w-4 h-4" />
+          <Trash2 :size="14" />
         </button>
       </div>
     </td>
@@ -64,43 +97,30 @@
 </template>
 
 <script setup>
-// Pilar 3: Composition API pura
-import { defineProps, defineEmits } from 'vue'
-import { MapPin, Calendar, FileUp, Trash2, Eye } from 'lucide-vue-next'
+import { computed } from 'vue'
+import { Trash2 } from 'lucide-vue-next'
 
-// Definimos lo que recibimos del padre (El objeto de datos)
-const props = defineProps({
-  padron: {
-    type: Object,
-    required: true,
-  },
+const props = defineProps({ padron: { type: Object, required: true } })
+defineEmits(['ver-datos', 'importar', 'eliminar'])
+
+const catPalette = {
+  Agrícola: { bg: '#DDF0EC', color: '#1A7A6E' },
+  INEGI: { bg: '#E0F0F7', color: '#177DA6' },
+  Electoral: { bg: '#EDE9E3', color: '#5C4D3C' },
+  Social: { bg: '#DCFCE7', color: '#166534' },
+}
+const catStyle = computed(() => {
+  const c = catPalette[props.padron.categoria] ?? { bg: '#E8E5DF', color: '#4A6572' }
+  return `background:${c.bg};color:${c.color};`
 })
 
-// Agregamos 'ver-datos' a la lista de gritos al padre
-defineEmits(['importar', 'eliminar', 'ver-datos'])
-
-// Utilidad local para que la fecha se vea bonita (ej. "6 mar 2026")
-const formatearFecha = (fechaOriginal) => {
-  if (!fechaOriginal) return 'N/A'
-
-  try {
-    let textoFecha = ''
-    if (typeof fechaOriginal === 'object' && fechaOriginal.date) {
-      textoFecha = fechaOriginal.date
-    } else {
-      textoFecha = String(fechaOriginal)
-    }
-    const fechaSegura = textoFecha.replace(' ', 'T')
-    const fecha = new Date(fechaSegura)
-
-    if (isNaN(fecha.getTime())) return 'Fecha inválida'
-    return fecha.toLocaleDateString('es-MX', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    })
-  } catch (error) {
-    return 'Error'
-  }
+const formatDate = (raw) => {
+  // CI4 devuelve { date: "2026-03-06 ...", timezone_type, timezone }
+  const str = typeof raw === 'object' && raw !== null ? raw.date : raw
+  if (!str) return '—'
+  const d = new Date(str.replace(' ', 'T'))
+  return isNaN(d)
+    ? '—'
+    : d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 </script>

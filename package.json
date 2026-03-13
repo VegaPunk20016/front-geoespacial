@@ -22,6 +22,7 @@
     "lucide": "^0.574.0",
     "lucide-vue-next": "^0.574.0",
     "pinia": "^3.0.4",
+    "proj4": "^2.20.4",
     "tailwindcss": "^4.1.18",
     "vue": "^3.5.28",
     "vue-router": "^5.0.2"

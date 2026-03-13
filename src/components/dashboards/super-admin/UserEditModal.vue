@@ -1,100 +1,154 @@
 <template>
   <div
-    class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm"
+    class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+    style="background: rgba(1, 39, 55, 0.55); backdrop-filter: blur(4px)"
   >
     <div
-      class="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+      class="w-full sm:max-w-md rounded-t-2xl sm:rounded-xl border overflow-hidden shadow-2xl"
+      style="background: white; border-color: var(--color-base-dark)"
     >
-      <div class="flex justify-between items-center p-5 border-b border-gray-100 bg-gray-50/50">
-        <h3 class="text-lg font-bold text-[#012737]">Editar Usuario</h3>
-        <button @click="$emit('close')" class="text-gray-400 hover:text-red-500 transition-colors">
-          <X :size="20" />
+      <!-- Header -->
+      <div
+        class="flex items-center justify-between px-5 py-4 border-b"
+        style="background: #fdfcfa; border-color: var(--color-base-dark)"
+      >
+        <div>
+          <h3 class="text-sm font-bold" style="color: var(--color-dark)">Editar Usuario</h3>
+          <p class="text-[11px] mt-0.5" style="color: var(--color-muted)">{{ user?.email }}</p>
+        </div>
+        <button
+          @click="$emit('close')"
+          class="p-1.5 rounded-lg"
+          style="color: var(--color-muted); background: none; border: none; cursor: pointer"
+        >
+          <X :size="17" />
         </button>
       </div>
 
-      <form @submit.prevent="handleSave" class="p-5 space-y-4">
-        <div v-for="field in formFields" :key="field.id">
-          <label class="block text-xs font-semibold text-gray-600 uppercase mb-1">{{
-            field.label
-          }}</label>
+      <!-- Body -->
+      <div class="p-5 space-y-4">
+        <div>
+          <label
+            class="block text-[11px] font-bold uppercase tracking-widest mb-1.5"
+            style="color: var(--color-muted)"
+            >Nombre de usuario</label
+          >
           <input
-            v-model="localForm[field.model]"
-            :type="field.type"
-            :required="field.required"
-            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#177DA6]/20 focus:border-[#177DA6] outline-none transition-all"
+            v-model="form.username"
+            type="text"
+            class="g-input"
+            placeholder="Nombre completo"
           />
         </div>
 
         <div>
-          <label class="block text-xs font-semibold text-gray-600 uppercase mb-1"
-            >Rol del Sistema</label
+          <label
+            class="block text-[11px] font-bold uppercase tracking-widest mb-1.5"
+            style="color: var(--color-muted)"
+            >Rol</label
           >
-          <select
-            v-model="localForm.role_id"
-            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#177DA6]/20 focus:border-[#177DA6] outline-none transition-all"
-          >
-            <option :value="1">Super Admin</option>
-            <option :value="2">Admin</option>
+          <!-- El value es el role_id (int) que espera el backend -->
+          <select v-model="form.role_id" class="g-input" style="cursor: pointer">
             <option :value="3">Usuario</option>
+            <option :value="2">Admin</option>
+            <option :value="1">Super Admin</option>
           </select>
         </div>
 
-        <div class="flex gap-3 pt-4 mt-2 border-t border-gray-100">
-          <button
-            type="button"
-            @click="$emit('close')"
-            class="flex-1 px-4 py-2 text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg"
+        <div>
+          <label
+            class="block text-[11px] font-bold uppercase tracking-widest mb-1.5"
+            style="color: var(--color-muted)"
           >
-            Cancelar
-          </button>
-          <button
-            type="submit"
-            :disabled="isSaving"
-            class="flex-1 px-4 py-2 text-sm font-semibold text-white bg-[#177DA6] hover:bg-[#012737] rounded-lg flex justify-center items-center gap-2 transition-colors"
-          >
-            <Loader2 v-if="isSaving" class="animate-spin" :size="16" />
-            {{ isSaving ? 'Guardando...' : 'Guardar Cambios' }}
-          </button>
+            Nueva contraseña <span style="font-weight: 400">(opcional)</span>
+          </label>
+          <div class="relative">
+            <input
+              v-model="form.password"
+              :type="showPass ? 'text' : 'password'"
+              class="g-input"
+              placeholder="Dejar en blanco para no cambiar"
+              style="padding-right: 2.75rem"
+            />
+            <button
+              type="button"
+              @click="showPass = !showPass"
+              class="absolute right-3 top-1/2 -translate-y-1/2"
+              style="
+                color: var(--color-muted);
+                background: none;
+                border: none;
+                cursor: pointer;
+                display: flex;
+              "
+            >
+              <EyeOff v-if="!showPass" :size="15" /><Eye v-else :size="15" />
+            </button>
+          </div>
         </div>
-      </form>
+      </div>
+
+      <!-- Footer -->
+      <div
+        class="flex gap-2 px-5 py-4 border-t"
+        style="background: #fdfcfa; border-color: var(--color-base-dark)"
+      >
+        <button
+          @click="$emit('close')"
+          class="flex-1 py-2.5 text-xs font-semibold rounded-lg border"
+          style="border-color: var(--color-base-dark); color: var(--color-muted); background: white"
+        >
+          Cancelar
+        </button>
+        <button
+          @click="handleSave"
+          :disabled="isSaving"
+          class="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold rounded-lg text-white disabled:opacity-60"
+          style="background: var(--color-primary)"
+        >
+          <Loader2 v-if="isSaving" :size="13" class="animate-spin" />
+          {{ isSaving ? 'Guardando...' : 'Guardar cambios' }}
+        </button>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { reactive, watch } from 'vue'
-import { X, Loader2 } from 'lucide-vue-next'
+import { ref, reactive, watchEffect } from 'vue'
+import { X, Eye, EyeOff, Loader2 } from 'lucide-vue-next'
+
+// Mapa role string → role_id int (debe coincidir con tu tabla `roles` en BD)
+const ROLE_ID_MAP = { super_admin: 1, admin: 2, user: 3 }
 
 const props = defineProps({
   user: { type: Object, required: true },
   isSaving: { type: Boolean, default: false },
 })
-
 const emit = defineEmits(['close', 'save'])
 
-const localForm = reactive({
-  username: '',
-  email: '',
-  role_id: 3,
+const showPass = ref(false)
+const form = reactive({ username: '', role_id: 3, password: '' })
+
+watchEffect(() => {
+  if (props.user) {
+    form.username = props.user.username || ''
+    // Convierte el role string del backend al role_id int para el select
+    form.role_id = ROLE_ID_MAP[props.user.role] ?? 3
+    form.password = ''
+  }
 })
 
-const formFields = [
-  { id: 1, label: 'Nombre de Usuario', model: 'username', type: 'text', required: true },
-  { id: 2, label: 'Correo Electrónico', model: 'email', type: 'email', required: true },
-]
+const handleSave = () => {
+  // Payload separado: datos básicos + role_id para que el padre
+  // pueda llamar updateUser y setRole por separado si el rol cambió
+  const roleChanged = form.role_id !== (ROLE_ID_MAP[props.user.role] ?? 3)
 
-// Sincronizar props con el estado local al abrir
-watch(
-  () => props.user,
-  (newVal) => {
-    localForm.username = newVal.username
-    localForm.email = newVal.email
-    localForm.role_id =
-      newVal.role_id ||
-      (newVal.role_name === 'super_admin' ? 1 : newVal.role_name === 'admin' ? 2 : 3)
-  },
-  { immediate: true },
-)
-
-const handleSave = () => emit('save', { ...localForm })
+  emit('save', {
+    username: form.username,
+    password: form.password || null,
+    role_id: form.role_id,
+    roleChanged, // flag para que TabUsuarios sepa si debe llamar setRole
+  })
+}
 </script>

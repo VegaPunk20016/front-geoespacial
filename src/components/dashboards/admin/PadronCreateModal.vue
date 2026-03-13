@@ -1,128 +1,128 @@
 <template>
   <div
-    class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity"
+    class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+    style="background: rgba(1, 39, 55, 0.55); backdrop-filter: blur(4px)"
   >
     <div
-      class="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]"
+      class="w-full sm:max-w-md rounded-t-2xl sm:rounded-xl border overflow-hidden shadow-2xl"
+      style="background: white; border-color: var(--color-base-dark)"
     >
       <div
-        class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50"
+        class="flex items-center justify-between px-5 py-4 border-b"
+        style="background: #fdfcfa; border-color: var(--color-base-dark)"
       >
         <div>
-          <h3 class="text-lg font-bold text-gray-900">Crear Nuevo Padrón</h3>
-          <p class="text-xs text-gray-500 mt-0.5">
-            Define los metadatos para generar la tabla dinámica.
+          <h3 class="text-sm font-bold" style="color: var(--color-dark)">Nuevo Padrón</h3>
+          <p class="text-[11px] mt-0.5" style="color: var(--color-muted)">
+            Registra un nuevo catálogo geoespacial
           </p>
         </div>
         <button
-          @click="!isSaving && $emit('close')"
-          :disabled="isSaving"
-          class="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-full hover:bg-gray-100 disabled:opacity-50"
+          @click="$emit('close')"
+          class="p-1.5 rounded-lg"
+          style="color: var(--color-muted); background: none; border: none; cursor: pointer"
         >
-          <X class="w-5 h-5" />
+          <X :size="17" />
         </button>
       </div>
 
-      <div class="p-6 overflow-y-auto flex-1">
+      <div class="p-5 space-y-4 overflow-y-auto max-h-[60vh] sm:max-h-none">
         <div
-          v-if="errorMessage"
-          class="mb-4 p-3 bg-red-50 text-red-700 text-sm rounded-lg border border-red-100 flex items-start gap-2"
+          v-if="error"
+          class="text-xs px-3 py-2.5 rounded-lg border flex items-center gap-2"
+          style="background: #fee2e2; border-color: #fecaca; color: #991b1b"
         >
-          <AlertCircle class="w-4 h-4 mt-0.5 shrink-0" />
-          <span>{{ errorMessage }}</span>
+          <AlertCircle :size="13" class="shrink-0" />{{ error }}
         </div>
 
-        <form @submit.prevent="handleSubmit" class="space-y-4">
-          <div>
-            <label class="block text-sm font-semibold text-gray-700 mb-1"
-              >Nombre del Padrón *</label
-            >
-            <input
-              v-model="formData.nombre_padron"
-              type="text"
-              required
-              :disabled="isSaving"
-              placeholder="Ej. Apoyos Agrícolas 2026"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#177DA6]/50 focus:border-[#177DA6] outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500"
-            />
-          </div>
+        <div>
+          <label
+            class="block text-[11px] font-bold uppercase tracking-widest mb-1.5"
+            style="color: var(--color-muted)"
+            >Nombre del padrón *</label
+          >
+          <input
+            v-model="form.nombre_padron"
+            type="text"
+            placeholder="Ej: Apoyos Agrícolas 2026"
+            class="g-input"
+            required
+          />
+        </div>
 
-          <div>
-            <label class="block text-sm font-semibold text-gray-700 mb-1">Descripción</label>
-            <textarea
-              v-model="formData.descripcion"
-              rows="2"
-              :disabled="isSaving"
-              placeholder="Breve detalle de los datos a importar..."
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#177DA6]/50 focus:border-[#177DA6] outline-none transition-all resize-none disabled:bg-gray-50 disabled:text-gray-500"
-            ></textarea>
-          </div>
+        <div>
+          <label
+            class="block text-[11px] font-bold uppercase tracking-widest mb-1.5"
+            style="color: var(--color-muted)"
+            >Clave interna (Opcional)</label
+          >
+          <input
+            v-model="form.clave_interna"
+            type="text"
+            placeholder="Ej: PAD-001"
+            class="g-input"
+          />
+        </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label class="block text-sm font-semibold text-gray-700 mb-1"
-                >Entidad Federativa *</label
-              >
-              <select
-                v-model="formData.entidad_federativa"
-                required
-                :disabled="isSaving"
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#177DA6]/50 focus:border-[#177DA6] outline-none bg-white transition-all disabled:bg-gray-50 disabled:text-gray-500"
-              >
-                <option value="" disabled>Seleccionar estado...</option>
-                <option value="Nacional">Nacional</option>
-                <option value="Estado de México">Estado de México</option>
-                <option value="Ciudad de México">Ciudad de México</option>
-                <option value="Jalisco">Jalisco</option>
-                <option value="Nuevo León">Nuevo León</option>
-              </select>
-            </div>
+        <div>
+          <label
+            class="block text-[11px] font-bold uppercase tracking-widest mb-1.5"
+            style="color: var(--color-muted)"
+            >Categoría *</label
+          >
+          <input
+            v-model="form.categoria"
+            type="text"
+            placeholder="Ej: Agrícola, Electoral..."
+            class="g-input"
+          />
+        </div>
 
-            <div>
-              <label class="block text-sm font-semibold text-gray-700 mb-1">Categoría</label>
-              <input
-                v-model="formData.categoria"
-                type="text"
-                :disabled="isSaving"
-                placeholder="Ej. Salud, Economía, etc."
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#177DA6]/50 focus:border-[#177DA6] outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500"
-              />
-            </div>
-          </div>
+        <div>
+          <label
+            class="block text-[11px] font-bold uppercase tracking-widest mb-1.5"
+            style="color: var(--color-muted)"
+            >Entidad federativa *</label
+          >
+          <select v-model="form.entidad_federativa" class="g-input appearance-none">
+            <option value="Estado de México">Estado de México</option>
+          </select>
+        </div>
 
-          <div>
-            <label class="block text-sm font-semibold text-gray-700 mb-1"
-              >Clave Interna (Opcional)</label
-            >
-            <input
-              v-model="formData.clave_interna"
-              type="text"
-              :disabled="isSaving"
-              placeholder="Folio o identificador de dependencia"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#177DA6]/50 focus:border-[#177DA6] outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500"
-            />
-          </div>
-        </form>
+        <div>
+          <label
+            class="block text-[11px] font-bold uppercase tracking-widest mb-1.5"
+            style="color: var(--color-muted)"
+            >Descripción</label
+          >
+          <textarea
+            v-model="form.descripcion"
+            rows="3"
+            placeholder="Descripción breve..."
+            class="g-input resize-none"
+          />
+        </div>
       </div>
 
-      <div class="px-6 py-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
+      <div
+        class="flex gap-2 px-5 py-4 border-t"
+        style="background: #fdfcfa; border-color: var(--color-base-dark)"
+      >
         <button
-          type="button"
           @click="$emit('close')"
-          :disabled="isSaving"
-          class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#177DA6] disabled:opacity-50 transition-colors"
+          class="flex-1 py-2.5 text-xs font-semibold rounded-lg border"
+          style="border-color: var(--color-base-dark); color: var(--color-muted); background: white"
         >
           Cancelar
         </button>
-
         <button
-          @click="handleSubmit"
-          :disabled="isSaving || !esFormularioValido"
-          class="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-[#177DA6] border border-transparent rounded-lg hover:bg-[#126385] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#177DA6] disabled:opacity-70 disabled:cursor-not-allowed transition-colors min-w-[120px]"
+          @click="handleCreate"
+          :disabled="isLoading"
+          class="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold rounded-lg text-white disabled:opacity-60"
+          style="background: var(--color-primary)"
         >
-          <Loader2 v-if="isSaving" class="w-4 h-4 mr-2 animate-spin" />
-          <Save v-else class="w-4 h-4 mr-2" />
-          {{ isSaving ? 'Creando Tabla...' : 'Guardar Padrón' }}
+          <Loader2 v-if="isLoading" :size="13" class="animate-spin" />
+          {{ isLoading ? 'Creando...' : 'Crear padrón' }}
         </button>
       </div>
     </div>
@@ -130,52 +130,38 @@
 </template>
 
 <script setup>
-// Pilar 3: Composition API estricta
-import { ref, computed } from 'vue'
-import { usePadronStore } from '@/stores/padronStore' // Pilar 2: Store Global
-import { X, Save, Loader2, AlertCircle } from 'lucide-vue-next'
+import { ref, reactive } from 'vue'
+import { X, Loader2, AlertCircle } from 'lucide-vue-next'
+import { usePadronStore } from '@/stores/padronStore'
 
 const emit = defineEmits(['close', 'created'])
 const padronStore = usePadronStore()
+const isLoading = ref(false)
+const error = ref('')
 
-// Estados Locales de la UI
-const isSaving = ref(false)
-const errorMessage = ref('')
-
-// El objeto de datos que enviaremos
-const formData = ref({
+const form = reactive({
   nombre_padron: '',
+  clave_interna: '', // Nuevo campo
+  categoria: 'General', // Valor por defecto
+  entidad_federativa: 'Estado de México', // Valor predeterminado para el dropdown
   descripcion: '',
-  entidad_federativa: '',
-  categoria: '',
-  clave_interna: '',
 })
 
-// Validación sencilla reactiva (para apagar el botón si faltan datos)
-const esFormularioValido = computed(() => {
-  return formData.value.nombre_padron.trim() !== '' && formData.value.entidad_federativa !== ''
-})
-
-const handleSubmit = async () => {
-  if (!esFormularioValido.value) return
-
-  // Iniciamos la Máquina de Estados local del Modal
-  isSaving.value = true
-  errorMessage.value = ''
-
+const handleCreate = async () => {
+  if (!form.nombre_padron.trim()) {
+    error.value = 'El nombre del padrón es obligatorio.'
+    return
+  }
+  isLoading.value = true
+  error.value = ''
   try {
-    // Le pasamos el paquete al Store para que hable con el Servicio
-    await padronStore.crearPadron(formData.value)
-
-    // Si todo salió bien en CodeIgniter, cerramos el modal y avisamos
+    await padronStore.crearPadron(form)
     emit('created')
     emit('close')
-  } catch (error) {
-    // Si el backend se queja, mostramos el error elegantemente
-    errorMessage.value = padronStore.errorMessage || 'Error de conexión al crear el padrón.'
+  } catch (e) {
+    error.value = padronStore.errorMessage || 'Error al crear el padrón.'
   } finally {
-    // Apagamos el spinner sin importar qué pasó
-    isSaving.value = false
+    isLoading.value = false
   }
 }
 </script>

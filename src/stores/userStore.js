@@ -62,8 +62,15 @@ export const useUserStore = defineStore('users', {
       try {
         await userService.deleteUser(email)
 
-        // Elimina de la lista local sin refetch — reactividad pura
-        this.users = this.users.filter((u) => u.email !== email)
+        // Marcamos al usuario como inactivo localmente (soft-delete)
+        // para que siga visible en la tabla con el botón "Reactivar"
+        const index = this.users.findIndex((u) => u.email === email)
+        if (index !== -1) {
+          this.users[index] = {
+            ...this.users[index],
+            deleted_at: { date: new Date().toISOString(), timezone_type: 3, timezone: 'UTC' },
+          }
+        }
 
         this.actionStatus = 'success'
       } catch (err) {
@@ -94,7 +101,6 @@ export const useUserStore = defineStore('users', {
       }
     },
 
-    // Resetea el actionStatus a idle (útil al cerrar modales)
     resetActionStatus() {
       this.actionStatus = 'idle'
       this.actionError = null
