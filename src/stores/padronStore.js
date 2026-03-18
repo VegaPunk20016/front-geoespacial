@@ -1,13 +1,13 @@
 import { defineStore } from 'pinia'
 import padronService from '../services/padronService'
-import api from '../services/api' // Asegúrate de importar tu instancia de axios/api
+import api from '../services/api'
 
 export const usePadronStore = defineStore('padron', {
   state: () => ({
     padrones: [],
     padronActual: null,
-    beneficiarios: [], // puntos reales (zoom alto)
-    clusters: [], // clusters del servidor (zoom bajo)
+    beneficiarios: [], // puntos reales — cuando el backend responde modo:'puntos'
+    clusters: [], // clusters agrupados — cuando el backend responde modo:'clusters'
 
     status: 'idle',
     actionStatus: 'idle',
@@ -29,22 +29,38 @@ export const usePadronStore = defineStore('padron', {
       }
     },
 
-    async fetchMapaDatos(id, filtros, modo) {
-      this.loading = true
+    /**
+     * fetchMapaDatos — siempre llama a /clusters.
+     *
+     * El backend decide internamente si devuelve puntos o clusters según el zoom
+     * (umbral único en PadronController: zoom >= 13 → puntos, < 13 → clusters).
+     * La respuesta trae { modo: 'puntos'|'clusters', data: [...] } para que el
+     * frontend sepa qué recibió sin repetir la lógica del umbral aquí.
+     *
+     * Retorna el objeto completo { modo, total, data } para que el caller
+     * pueda actualizar modoActual con el valor real del backend.
+     */
+    async fetchMapaDatos(id, filtros) {
+      this.status = 'loading'
       try {
-        // Si el zoom es alto pedimos beneficiarios, si es bajo clusters
-        const endpoint = modo === 'puntos' ? 'beneficiarios' : 'clusters'
-        const res = await api.get(`/padrones/${id}/${endpoint}`, { params: filtros })
+        const res = await api.get(`/padrones/${id}/clusters`, { params: filtros })
+        const modo = res.data.modo // 'puntos' | 'clusters'
+        const data = res.data.data || []
 
         if (modo === 'puntos') {
-          this.beneficiarios = res.data.data || []
+          this.beneficiarios = data
+          this.clusters = []
         } else {
-          this.clusters = res.data.data || []
+          this.clusters = data
+          this.beneficiarios = []
         }
+
+        this.status = 'success'
+        return res.data // { modo, total, data }
       } catch (err) {
+        this.status = 'error'
         console.error('Error cargando mapa:', err)
-      } finally {
-        this.loading = false
+        return null
       }
     },
 
@@ -76,13 +92,12 @@ export const usePadronStore = defineStore('padron', {
       }
     },
 
-    // ---> NUEVA ACCIÓN: BUSCADOR OMNIBAR <---
-    async buscarPersona(id, query) {
+    async buscarMunicipios(id, query) {
       try {
         const response = await api.get(`/padrones/${id}/buscar`, { params: { q: query } })
         return response.data.data
       } catch (err) {
-        console.error('Error en la búsqueda global:', err)
+        console.error('Error en la búsqueda de municipios:', err)
         return []
       }
     },
@@ -114,6 +129,7 @@ export const usePadronStore = defineStore('padron', {
         throw err
       }
     },
+
     async fetchResumenAgnostico(id, municipio = null) {
       try {
         const params = municipio ? { municipio } : {}
@@ -124,6 +140,7 @@ export const usePadronStore = defineStore('padron', {
         return null
       }
     },
+
     async eliminarPadron(id, permanente = false) {
       this.actionStatus = 'loading'
       this.errorMessage = null

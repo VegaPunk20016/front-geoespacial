@@ -1,119 +1,70 @@
 <template>
-  <div class="h-[calc(100vh-80px)] flex bg-white overflow-hidden relative">
-    <aside
-      class="absolute md:relative z-40 w-80 h-full bg-white border-r border-gray-200 shadow-2xl md:shadow-none transition-transform duration-300 ease-in-out flex flex-col"
-      :class="isFiltersOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'"
+  <div class="h-[calc(100vh-80px)] bg-gray-50 flex flex-col items-center justify-center p-6">
+    <!-- Card principal -->
+    <div
+      class="bg-white rounded-2xl shadow-sm border border-gray-200 w-full max-w-lg p-8 text-center"
     >
-      <div class="p-5 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
-        <h2 class="text-base font-bold text-gray-800 flex items-center gap-2">
-          <Filter :size="18" class="text-[#177DA6]" /> Filtros DENUE
-        </h2>
-        <button
-          @click="isFiltersOpen = false"
-          class="md:hidden text-gray-400 hover:text-gray-800 p-1"
-        >
-          <X :size="20" />
-        </button>
-      </div>
-
-      <div class="flex-1 overflow-y-auto p-5 space-y-5">
-        <div class="space-y-1.5">
-          <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Estado</label>
-          <select
-            class="w-full bg-white border border-gray-300 text-gray-700 text-sm rounded-md focus:ring-2 focus:ring-[#177DA6]/20 focus:border-[#177DA6] p-2.5"
-          >
-            <option>Todos los estados</option>
-            <option>Ciudad de México</option>
-            <option>Estado de México</option>
-            <option>Jalisco</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="p-5 border-t border-gray-100 bg-white">
-        <button
-          class="w-full bg-[#012737] hover:bg-[#177DA6] text-white py-2.5 rounded-md text-sm font-semibold transition-colors flex items-center justify-center gap-2 shadow-md"
-        >
-          <Search :size="16" /> Buscar Establecimientos
-        </button>
-      </div>
-    </aside>
-
-    <main class="flex-1 relative bg-[#e5e7eb] overflow-hidden">
-      <button
-        @click="isFiltersOpen = true"
-        class="md:hidden absolute top-4 left-4 z-[400] bg-white p-2.5 rounded-md shadow-lg text-gray-700 hover:text-[#177DA6]"
+      <!-- Icono -->
+      <div
+        class="w-16 h-16 bg-[#012737]/10 rounded-2xl flex items-center justify-center mx-auto mb-6"
       >
-        <Filter :size="20" />
+        <Map :size="32" class="text-[#012737]" />
+      </div>
+
+      <!-- Título -->
+      <h1 class="text-xl font-bold text-gray-800 mb-2">Bienvenido al Sistema de Padrones</h1>
+      <p class="text-sm text-gray-500 mb-8">
+        Consulta, explora y visualiza en el mapa los padrones disponibles.
+      </p>
+
+      <!-- Botón principal -->
+      <button
+        @click="router.push('/consulta')"
+        class="w-full bg-[#012737] hover:bg-[#177DA6] text-white py-3 rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2 shadow-md mb-3"
+      >
+        <Map :size="16" /> Explorar Padrones en el Mapa
       </button>
 
-      <div class="absolute top-4 right-4 z-[400] flex flex-col gap-2">
-        <button
-          class="bg-white p-2.5 rounded-md shadow-lg text-gray-700 hover:text-[#177DA6] transition-colors"
-          title="Capas"
-        >
-          <Layers :size="20" />
-        </button>
-        <button
-          @click="resetView"
-          class="bg-white p-2.5 rounded-md shadow-lg text-gray-700 hover:text-[#177DA6] transition-colors"
-          title="Centrar en México"
-        >
-          <Crosshair :size="20" />
-        </button>
-      </div>
+      <p class="text-xs text-gray-400">
+        Selecciona un padrón, filtra por municipio y visualiza los registros geolocalizados.
+      </p>
+    </div>
 
-      <div class="w-full h-full z-0 relative">
-        <l-map ref="mapRef" v-model:zoom="zoom" :center="center" :useGlobalLeaflet="false">
-          <l-tile-layer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            layer-type="base"
-            name="OpenStreetMap"
-            attribution="&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> IIDESOFT"
-          ></l-tile-layer>
-
-          <l-marker :lat-lng="[19.4326, -99.1332]">
-            <l-popup>
-              <div class="text-center">
-                <p class="font-bold text-[#177DA6] mb-1">IIDESOFT Centro</p>
-                <p class="text-xs text-gray-600">Marcador de prueba DENUE</p>
-              </div>
-            </l-popup>
-          </l-marker>
-        </l-map>
+    <!-- Stats rápidas si hay padrones cargados -->
+    <div v-if="store.padrones.length" class="mt-6 grid grid-cols-2 gap-4 w-full max-w-lg">
+      <div
+        v-for="p in padronesMuestra"
+        :key="p.id"
+        @click="router.push(`/consulta/${p.id}`)"
+        class="bg-white rounded-xl border border-gray-200 p-4 cursor-pointer hover:border-[#177DA6] hover:shadow-sm transition-all"
+      >
+        <p class="text-xs font-bold text-[#177DA6] uppercase tracking-wide mb-1">
+          {{ p.categoria || 'General' }}
+        </p>
+        <p class="text-sm font-semibold text-gray-800 leading-tight line-clamp-2">
+          {{ p.nombre_padron }}
+        </p>
+        <p class="text-[10px] text-gray-400 mt-1">{{ p.entidad_federativa || '—' }}</p>
       </div>
-    </main>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import { Filter, X, Search, Layers, Crosshair } from 'lucide-vue-next'
+import { computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { usePadronStore } from '@/stores/padronStore'
+import { Map } from 'lucide-vue-next'
 
-// --- IMPORTACIONES DE LEAFLET ---
-// ¡CRÍTICO! El CSS debe estar aquí para que el mapa no se rompa
-import 'leaflet/dist/leaflet.css'
-import { LMap, LTileLayer, LMarker, LPopup } from '@vue-leaflet/vue-leaflet'
+const router = useRouter()
+const store = usePadronStore()
 
-// Estado de la interfaz
-const isFiltersOpen = ref(false)
+// Mostrar máximo 4 padrones como accesos rápidos
+const padronesMuestra = computed(() => store.padrones.slice(0, 4))
 
-// Estado del Mapa
-const mapRef = ref(null)
-const zoom = ref(5) // Nivel de zoom inicial (5 es perfecto para ver todo el país)
-const center = ref([23.6345, -102.5528]) // Coordenadas exactas del centro de México
-
-// Función para volver al centro
-const resetView = () => {
-  zoom.value = 5
-  center.value = [23.6345, -102.5528]
-}
+onMounted(async () => {
+  if (store.status === 'idle' || store.status === 'error') {
+    await store.fetchPadrones()
+  }
+})
 </script>
-
-<style>
-/* Ajuste de seguridad: Leaflet por defecto usa z-indexes muy altos (400, 500, 1000).
-   Forzamos a que respete nuestros modales y sidebars de Tailwind */
-.leaflet-container {
-  z-index: 10 !important;
-}
-</style>
