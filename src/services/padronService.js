@@ -4,45 +4,101 @@ export default {
   getAll() {
     return api.get('/padrones')
   },
-
   getById(id) {
     return api.get(`/padrones/${id}`)
   },
 
-  // Puntos reales — zoom alto (≥13)
-  getBeneficiarios(id, coords = null) {
-    let url = `/padrones/${id}/beneficiarios`
-    if (coords) url += '?' + new URLSearchParams(coords).toString()
-    return api.get(url)
+  // Mapa — con AbortController signal
+  getBeneficiarios(id, filtros = {}, signal = null) {
+    return api.get(`/padrones/${id}/beneficiarios`, {
+      params: filtros,
+      ...(signal ? { signal } : {}),
+    })
   },
 
-  // Clusters del servidor — zoom bajo (<13)
-  getClusters(id, coords = null) {
-    let url = `/padrones/${id}/clusters`
-    if (coords) url += '?' + new URLSearchParams(coords).toString()
-    return api.get(url)
+  // Tabla — paginación explícita
+  getBeneficiariosPaginados(
+    id,
+    { pagina = 1, porPagina = 50, municipio = null, seccion = null, cp = null } = {},
+    signal = null,
+  ) {
+    return api.get(`/padrones/${id}/beneficiarios`, {
+      params: {
+        pagina,
+        por_pagina: porPagina,
+        ...(municipio ? { municipio } : {}),
+        ...(seccion ? { seccion } : {}),
+        ...(cp ? { codigo_postal: cp } : {}),
+      },
+      ...(signal ? { signal } : {}),
+    })
+  },
+
+  getDetalleBeneficiario(padronId, beneficiarioId) {
+    return api.get(`/padrones/${padronId}/beneficiarios/${beneficiarioId}`)
+  },
+
+  // Crear beneficiario
+  crearBeneficiario(padronId, campos = {}, datosGenerales = {}) {
+    return api.post(`/padrones/${padronId}/beneficiarios`, {
+      campos_fijos: campos,
+      datos_generales: datosGenerales,
+    })
+  },
+
+  // Editar beneficiario (PATCH)
+  editarBeneficiario(padronId, beneficiarioId, campos = {}, datosGenerales = {}) {
+    return api.patch(`/padrones/${padronId}/beneficiarios/${beneficiarioId}`, {
+      campos_fijos: campos,
+      datos_generales: datosGenerales,
+    })
+  },
+
+  // Eliminar beneficiario
+  eliminarBeneficiario(padronId, beneficiarioId) {
+    return api.delete(`/padrones/${padronId}/beneficiarios/${beneficiarioId}`)
+  },
+
+  getClusters(id, filtros = {}, signal = null) {
+    return api.get(`/padrones/${id}/clusters`, {
+      params: filtros,
+      ...(signal ? { signal } : {}),
+    })
+  },
+
+  buscar(id, q) {
+    return api.get(`/padrones/${id}/buscar`, { params: { q } })
+  },
+
+  buscarPorCP(id, cp) {
+    return api.get(`/padrones/${id}/buscar-cp/${cp}`)
+  },
+
+  getResumen(id, municipio = null) {
+    const params = municipio ? { municipio } : {}
+    return api.get(`/padrones/${id}/resumen`, { params })
+  },
+
+  getPlantilla(id) {
+    return api.get(`/padrones/${id}/plantilla`)
   },
 
   create(data) {
     return api.post('/padrones', data)
   },
 
-  importCsv(id, file) {
+  importCsv(id, file, onProgress = null) {
     const formData = new FormData()
     formData.append('archivo', file)
     return api.post(`/padrones/${id}/importar`, formData, {
       headers: { 'Content-Type': undefined },
-      onUploadProgress: (e) => {
-        console.log(`Subiendo: ${Math.round((e.loaded * 100) / e.total)}%`)
-      },
+      onUploadProgress: onProgress
+        ? (e) => onProgress(Math.round((e.loaded * 100) / e.total))
+        : undefined,
     })
   },
 
-  delete(id, permanente = false) {
-    return api.delete(`/padrones/${id}?permanente=${permanente}`)
-  },
-
   eliminar(id, permanente = false) {
-    return this.delete(id, permanente)
+    return api.delete(`/padrones/${id}`, { params: { permanente } })
   },
 }
