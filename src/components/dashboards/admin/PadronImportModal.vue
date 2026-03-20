@@ -1,3 +1,261 @@
+<script setup>
+import { ref, computed, reactive, onMounted } from 'vue'
+import {
+  X,
+  FileUp,
+  Loader2,
+  AlertCircle,
+  Check,
+  ArrowRight,
+  ChevronLeft,
+  Info,
+} from 'lucide-vue-next'
+import api from '@/services/api'
+import { usePadronStore } from '@/stores/padronStore'
+const store = usePadronStore()
+
+const props = defineProps({ padron: { type: Object, required: true } })
+const emit = defineEmits(['close', 'imported'])
+
+const paso = ref('archivo')
+const pasos = ['archivo', 'editor', 'simulacion', 'resultado']
+const etiquetasPaso = {
+  archivo: 'Archivo',
+  analizando: 'Analizando',
+  editor: 'Columnas',
+  simulacion: 'Simulación',
+  importando: 'Importando',
+  resultado: 'Listo',
+}
+const pasoIdx = computed(() => pasos.indexOf(paso.value))
+
+const archivo = ref(null)
+const isDragging = ref(false)
+const cargando = ref(false)
+const errorMsg = ref('')
+const preview = ref({ headers: [], muestra: [], totalFilas: 0 })
+const previewKey = ref(null)
+const resultado = ref({})
+
+const filasEliminadas = ref([])
+const guardarPlantilla = ref(true)
+
+const headersEditables = ref([])
+
+const CAMPOS_FIJOS = new Set([
+  'clave_unica',
+  'nombre_completo',
+  'municipio',
+  'codigo_postal',
+  'seccion',
+  'latitud',
+  'longitud',
+])
+
+const REGLAS_MAPEO = {
+  clave_unica: /^(clee|curp|rfc|folio|clave|id$|matricula|expediente)/i,
+  nombre_completo: /^(nombre|nom_estab|beneficiario|razon_social|titular)/i,
+  municipio: /^(municipio|nom_mun|delegacion|alcaldia)/i,
+  codigo_postal: /^(c\.?p\.?$|codigo_postal|cod_post|zip)/i,
+  seccion: /^(seccion|seccion_electoral)/i,
+  latitud: /^(lat$|latitud$)/i,
+  longitud: /^(lon$|lng$|longitud$)/i,
+}
+
+const erroresMapeo = computed(() => {
+  const conteo = {}
+  const duplicados = new Set()
+  headersEditables.value.forEach((h) => {
+    if (CAMPOS_FIJOS.has(h)) {
+      conteo[h] = (conteo[h] || 0) + 1
+      if (conteo[h] > 1) duplicados.add(h)
+    }
+  })
+  return duplicados
+})
+
+const eliminarColumna = (index) => {
+  preview.value.headers.splice(index, 1)
+  headersEditables.value.splice(index, 1)
+}
+
+const eliminarFila = (index) => {
+  filasEliminadas.value.push(index)
+  preview.value.muestra.splice(index, 1)
+  preview.value.totalFilas--
+}
+
+const handleFileSelect = (e) => seleccionarArchivo(e.target.files[0])
+const handleDrop = (e) => {
+  isDragging.value = false
+  seleccionarArchivo(e.dataTransfer.files[0])
+}
+
+const seleccionarArchivo = (file) => {
+  errorMsg.value = ''
+  if (!file) return
+
+  const extArchivo = file.name.split('.').pop().toLowerCase()
+  const esperado = props.padron.formato_esperado
+
+  if (esperado && extArchivo !== esperado) {
+    errorMsg.value = `Este padrón está configurado para archivos .${esperado.toUpperCase()}. El archivo seleccionado es .${extArchivo.toUpperCase()}.`
+    archivo.value = null
+    return
+  }
+
+  const permitidos = ['csv', 'txt', 'xlsx', 'xls']
+  if (!permitidos.includes(extArchivo)) {
+    errorMsg.value = 'Formato no permitido. Usa CSV, TXT o Excel.'
+    return
+  }
+
+  archivo.value = file
+}
+
+const analizarArchivo = async () => {
+  if (!archivo.value) return
+  paso.value = 'analizando'
+  cargando.value = true
+  errorMsg.value = ''
+
+  try {
+    const formData = new FormData()
+    formData.append('archivo', archivo.value)
+
+    const res = await api.post(`/padrones/${props.padron.id}/preview-csv`, formData, {
+      headers: { 'Content-Type': undefined },
+    })
+
+    preview.value = res.data.data
+    filasEliminadas.value = [] // Limpiamos el historial de filas borradas para el nuevo archivo
+
+    if (preview.value.previewKey) {
+      previewKey.value = preview.value.previewKey
+    }
+
+    const plantilla = props.padron.plantilla_mapeo || {}
+
+    headersEditables.value = preview.value.headers.map((h) => {
+      const hClean = h.trim()
+
+      if (plantilla[hClean]) return plantilla[hClean]
+
+      const hNorm = hClean.toLowerCase().replace(/[^a-z0-9]/g, '')
+
+      const coincidenciaFlexible = Object.keys(plantilla).find((key) => {
+        const keyNorm = key.toLowerCase().replace(/[^a-z0-9]/g, '')
+        return keyNorm === hNorm
+      })
+
+      if (coincidenciaFlexible) {
+        return plantilla[coincidenciaFlexible]
+      }
+
+      const hLower = hClean.toLowerCase()
+      const coincidenciaRelajada = Object.keys(plantilla).find(
+        (key) => key.toLowerCase() === hLower,
+      )
+      if (coincidenciaRelajada) return plantilla[coincidenciaRelajada]
+
+      const hRegexNorm = hLower.replace(/\s+/g, '_')
+      for (const [campo, re] of Object.entries(REGLAS_MAPEO)) {
+        if (re.test(hRegexNorm)) return campo
+      }
+
+      return h
+    })
+
+    paso.value = 'editor'
+  } catch (err) {
+    console.error('Error en analizarArchivo:', err)
+    errorMsg.value = err.response?.data?.message || 'Error al analizar el archivo.'
+    paso.value = 'archivo'
+  } finally {
+    cargando.value = false
+  }
+}
+
+const columnasSimulacion = computed(() => {
+  const fijosPrimero = []
+  const extrasLuego = []
+
+  headersEditables.value.forEach((h) => {
+    if (CAMPOS_FIJOS.has(h)) {
+      const labels = {
+        clave_unica: 'Clave única',
+        nombre_completo: 'Nombre',
+        municipio: 'Municipio',
+        codigo_postal: 'C.P.',
+        seccion: 'Sección',
+        latitud: 'Latitud',
+        longitud: 'Longitud',
+      }
+      if (!fijosPrimero.find((c) => c.key === h)) {
+        fijosPrimero.push({ key: h, label: labels[h] ?? h, esFijo: true })
+      }
+    } else {
+      extrasLuego.push({ key: h, label: h, esFijo: false })
+    }
+  })
+
+  return [...fijosPrimero, ...extrasLuego]
+})
+
+const registrosSimulados = computed(() => {
+  return preview.value.muestra.map((fila) => {
+    const reg = {}
+    preview.value.headers.forEach((originalHeader, i) => {
+      const nuevoNombre = headersEditables.value[i]
+      reg[nuevoNombre] = fila[originalHeader] ?? ''
+    })
+    return reg
+  })
+})
+
+const simular = () => {
+  if (erroresMapeo.value.size > 0) {
+    errorMsg.value = 'Corrige los campos duplicados antes de continuar.'
+    return
+  }
+  errorMsg.value = ''
+  paso.value = 'simulacion'
+}
+
+const importar = async () => {
+  paso.value = 'importando'
+  cargando.value = true
+  const extension = archivo.value.name.split('.').pop().toLowerCase()
+
+  const mapeo = {}
+  preview.value.headers.forEach((original, i) => {
+    mapeo[original] = headersEditables.value[i]
+  })
+
+  if (previewKey.value) mapeo.__previewKey__ = previewKey.value
+  mapeo.__filasIgnoradas__ = filasEliminadas.value
+  mapeo.__guardarPlantilla__ = guardarPlantilla.value
+  mapeo.__extensionOriginal__ = extension
+
+  try {
+    const res = await api.post(`/padrones/${props.padron.id}/importar-mapeado`, { mapeo })
+    await store.fetchPadronPorId(props.padron.id)
+    resultado.value = res.data.data
+    paso.value = 'resultado'
+    emit('imported')
+  } catch (err) {
+    errorMsg.value = err.response?.data?.message || 'Error al importar los datos.'
+    paso.value = 'simulacion'
+  } finally {
+    cargando.value = false
+  }
+}
+
+const cerrar = () => {
+  if (!cargando.value) emit('close')
+}
+</script>
+
 <template>
   <div
     class="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -5,43 +263,45 @@
   >
     <div
       class="w-full rounded-xl border overflow-hidden shadow-2xl flex flex-col"
-      :class="paso === 'mapeo' ? 'max-w-3xl' : 'max-w-lg'"
-      style="background: white; border-color: var(--color-base-dark); max-height: 90vh"
+      :class="
+        ['editor', 'simulacion'].includes(paso)
+          ? 'max-w-5xl'
+          : paso === 'mapeo'
+            ? 'max-w-3xl'
+            : 'max-w-lg'
+      "
+      style="background: white; border-color: var(--color-base-dark); max-height: 92vh"
     >
-      <!-- Header -->
       <div
         class="flex items-center justify-between px-6 py-4 border-b shrink-0"
         style="background: #fdfcfa; border-color: var(--color-base-dark)"
       >
-        <div class="flex items-center gap-3">
-          <!-- Steps -->
-          <div class="flex items-center gap-1.5">
-            <div v-for="(s, i) in pasos" :key="s" class="flex items-center gap-1.5">
-              <div
-                class="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black transition-all"
-                :style="
-                  paso === s
-                    ? 'background: var(--color-dark); color: white'
-                    : i < pasoIdx
-                      ? 'background: #bbf7d0; color: #166534'
-                      : 'background: var(--color-base-dark); color: var(--color-muted)'
-                "
-              >
-                <Check v-if="i < pasoIdx" :size="10" />
-                <span v-else>{{ i + 1 }}</span>
-              </div>
-              <span
-                class="text-[10px] font-semibold hidden sm:block"
-                :style="paso === s ? 'color: var(--color-dark)' : 'color: var(--color-muted)'"
-              >
-                {{ etiquetasPaso[s] }}
-              </span>
-              <div
-                v-if="i < pasos.length - 1"
-                class="w-4 h-px"
-                style="background: var(--color-base-dark)"
-              ></div>
+        <div class="flex items-center gap-1.5">
+          <div v-for="(s, i) in pasos" :key="s" class="flex items-center gap-1.5">
+            <div
+              class="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black transition-all"
+              :style="
+                paso === s
+                  ? 'background: var(--color-dark); color: white'
+                  : i < pasoIdx
+                    ? 'background: #bbf7d0; color: #166534'
+                    : 'background: var(--color-base-dark); color: var(--color-muted)'
+              "
+            >
+              <Check v-if="i < pasoIdx" :size="10" />
+              <span v-else>{{ i + 1 }}</span>
             </div>
+            <span
+              class="text-[10px] font-semibold hidden sm:block"
+              :style="paso === s ? 'color: var(--color-dark)' : 'color: var(--color-muted)'"
+            >
+              {{ etiquetasPaso[s] }}
+            </span>
+            <div
+              v-if="i < pasos.length - 1"
+              class="w-4 h-px"
+              style="background: var(--color-base-dark)"
+            ></div>
           </div>
         </div>
         <button
@@ -53,10 +313,24 @@
         </button>
       </div>
 
-      <!-- Cuerpo -->
-      <div class="flex-1 overflow-y-auto">
-        <!-- PASO 1: Seleccionar archivo -->
+      <div class="flex-1 overflow-y-auto min-h-0">
         <div v-if="paso === 'archivo'" class="p-6">
+          <div
+            v-if="props.padron.formato_esperado"
+            class="mb-4 p-3 rounded-lg border flex items-start gap-3"
+            style="background: #fff7ed; border-color: #ffedd5; color: #9a3412"
+          >
+            <Info :size="16" class="shrink-0 mt-0.5" />
+            <div class="text-[11px]">
+              <p class="font-bold uppercase">
+                Formato requerido: .{{ props.padron.formato_esperado }}
+              </p>
+              <p class="opacity-80">
+                Para asegurar el mapeo automático, utiliza el mismo formato de la importación
+                anterior.
+              </p>
+            </div>
+          </div>
           <div
             v-if="errorMsg"
             class="flex items-start gap-2 text-xs px-4 py-3 rounded-lg border mb-4"
@@ -64,7 +338,6 @@
           >
             <AlertCircle :size="13" class="shrink-0 mt-0.5" /> {{ errorMsg }}
           </div>
-
           <div
             class="rounded-xl border-2 border-dashed transition-all px-6 py-12 text-center cursor-pointer"
             :style="
@@ -114,7 +387,7 @@
           </div>
         </div>
 
-        <!-- PASO 2: Analizar -->
+        <!-- PASO: analizando -->
         <div
           v-else-if="paso === 'analizando'"
           class="p-12 flex flex-col items-center text-center gap-4"
@@ -125,172 +398,248 @@
           >
             <Loader2 :size="26" class="animate-spin" style="color: var(--color-primary)" />
           </div>
-          <div>
-            <p class="text-sm font-bold" style="color: var(--color-dark)">
-              Analizando estructura...
-            </p>
-            <p class="text-xs mt-1.5" style="color: var(--color-muted)">
-              Detectando columnas y filas de datos
-            </p>
-          </div>
+          <p class="text-sm font-bold" style="color: var(--color-dark)">Analizando estructura...</p>
         </div>
 
-        <!-- PASO 3: Mapeo de columnas -->
-        <div v-else-if="paso === 'mapeo'" class="p-5">
-          <!-- Info del archivo -->
+        <!-- PASO: editor -->
+        <div v-else-if="paso === 'editor'" class="flex flex-col h-full">
           <div
-            class="flex items-center justify-between mb-4 px-4 py-3 rounded-xl"
-            style="background: var(--color-base); border: 1px solid var(--color-base-dark)"
+            v-if="erroresMapeo.size > 0"
+            class="px-5 py-2 bg-red-50 text-red-600 text-[10px] font-bold border-b border-red-100 flex items-center gap-2"
           >
+            <AlertCircle :size="12" />
+            Atención: No puedes asignar "{{ Array.from(erroresMapeo).join(', ') }}" a varias
+            columnas.
+          </div>
+
+          <div
+            class="flex items-center justify-between px-5 py-3 border-b shrink-0"
+            style="background: #fdfcfa; border-color: var(--color-base-dark)"
+          >
+            <div>
+              <p class="text-xs font-bold" style="color: var(--color-dark)">Editor de columnas</p>
+              <p class="text-[10px]" style="color: var(--color-muted)">
+                Renombra las columnas del archivo. Los cambios se aplican antes de importar.
+              </p>
+            </div>
             <div class="flex items-center gap-2">
-              <FileUp :size="14" style="color: var(--color-primary)" />
-              <span class="text-xs font-semibold" style="color: var(--color-dark)">{{
-                archivo?.name
-              }}</span>
-            </div>
-            <span
-              class="text-[10px] font-bold px-2 py-1 rounded-full"
-              style="background: #e0f0f7; color: var(--color-primary)"
-            >
-              {{ preview.totalFilas.toLocaleString() }} filas ·
-              {{ preview.headers.length }} columnas
-            </span>
-          </div>
-
-          <!-- Instrucción -->
-          <p class="text-xs mb-4" style="color: var(--color-muted)">
-            Asigna cada columna del archivo a un campo del sistema. Las columnas sin asignar se
-            guardarán como datos adicionales.
-          </p>
-
-          <!-- Grid de mapeo -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-5">
-            <div
-              v-for="col in preview.headers"
-              :key="col"
-              class="flex items-center gap-2 p-3 rounded-xl border"
-              style="background: white; border-color: var(--color-base-dark)"
-            >
-              <!-- Columna original -->
-              <div class="min-w-0 flex-1">
-                <p
-                  class="text-[10px] font-black uppercase tracking-wide truncate"
-                  style="color: var(--color-muted)"
-                >
-                  Columna original
-                </p>
-                <p
-                  class="text-xs font-semibold truncate"
-                  style="color: var(--color-dark)"
-                  :title="col"
-                >
-                  {{ col }}
-                </p>
-                <!-- Muestra de valor -->
-                <p
-                  v-if="muestraValor(col)"
-                  class="text-[9px] mt-0.5 truncate"
-                  style="color: var(--color-muted)"
-                  :title="muestraValor(col)"
-                >
-                  Ej: {{ muestraValor(col) }}
-                </p>
-              </div>
-
-              <!-- Flecha -->
-              <ArrowRight :size="14" class="shrink-0" style="color: var(--color-base-dark)" />
-
-              <!-- Campo destino -->
-              <div class="w-40 shrink-0">
-                <select
-                  v-model="mapeo[col]"
-                  class="w-full text-xs rounded-lg border px-2 py-1.5 outline-none transition-all"
-                  :style="
-                    mapeo[col] && mapeo[col] !== '__ignorar__' && mapeo[col] !== '__auto__'
-                      ? 'border-color: var(--color-primary); background: #f0f9ff; color: var(--color-dark)'
-                      : mapeo[col] === '__ignorar__'
-                        ? 'border-color: #fecaca; background: #fff5f5; color: #991b1b'
-                        : 'border-color: var(--color-base-dark); background: var(--color-base); color: var(--color-muted)'
-                  "
-                >
-                  <option value="__auto__">→ Datos adicionales</option>
-                  <option value="__ignorar__">✕ Ignorar columna</option>
-                  <option disabled>── Campos fijos ──</option>
-                  <option v-for="campo in camposDestino" :key="campo.value" :value="campo.value">
-                    {{ campo.label }}
-                  </option>
-                </select>
-              </div>
+              <span
+                class="text-[10px] font-bold px-2 py-1 rounded-full"
+                style="background: #e0f0f7; color: var(--color-primary)"
+              >
+                {{ preview.totalFilas.toLocaleString() }} filas ·
+                {{ headersEditables.length }} columnas
+              </span>
             </div>
           </div>
 
-          <!-- Previsualización de datos -->
-          <details>
-            <summary
-              class="text-xs font-bold cursor-pointer select-none mb-2"
-              style="color: var(--color-muted)"
-            >
-              Vista previa de datos ({{ preview.muestra.length }} filas)
-            </summary>
-            <div
-              class="overflow-x-auto rounded-xl border"
-              style="border-color: var(--color-base-dark)"
-            >
-              <table class="w-full text-left">
-                <thead style="background: #fdfcfa; border-bottom: 1px solid var(--color-base-dark)">
-                  <tr>
-                    <th
-                      v-for="col in preview.headers.slice(0, 6)"
-                      :key="col"
-                      class="px-3 py-2 text-[9px] font-black uppercase tracking-wide whitespace-nowrap"
-                      style="color: var(--color-muted)"
-                    >
-                      {{ col.length > 15 ? col.slice(0, 15) + '…' : col }}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr
-                    v-for="(fila, i) in preview.muestra"
-                    :key="i"
-                    class="border-b"
-                    style="border-color: var(--color-base)"
+          <div class="flex-1 overflow-auto">
+            <table class="w-full text-left" style="border-collapse: separate; border-spacing: 0">
+              <thead class="sticky top-0 z-10" style="background: #fdfcfa">
+                <tr>
+                  <th
+                    class="px-3 py-2 border-b border-r text-[9px] font-black uppercase w-8 text-center"
+                    style="border-color: var(--color-base-dark); color: var(--color-muted)"
                   >
-                    <td
-                      v-for="col in preview.headers.slice(0, 6)"
-                      :key="col"
-                      class="px-3 py-1.5 text-[10px] whitespace-nowrap"
-                      style="color: var(--color-ink)"
+                    #
+                  </th>
+                  <th
+                    v-for="(h, i) in headersEditables"
+                    :key="i"
+                    class="border-b border-r min-w-[140px] relative group"
+                    style="border-color: var(--color-base-dark)"
+                  >
+                    <button
+                      @click="eliminarColumna(i)"
+                      class="absolute top-1 right-1 p-0.5 rounded opacity-50 hover:opacity-100 hover:bg-red-50 transition-all"
+                      title="Eliminar columna"
                     >
-                      {{ fila[col] ?? '—' }}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </details>
+                      <X :size="12" style="color: #ef4444" />
+                    </button>
+                    <div class="px-2 py-1.5 flex flex-col gap-1">
+                      <p
+                        class="text-[8px] font-bold uppercase truncate opacity-50 pr-4"
+                        :title="preview.headers[i]"
+                        style="color: var(--color-muted)"
+                      >
+                        {{ preview.headers[i] }}
+                      </p>
+                      <input
+                        v-model="headersEditables[i]"
+                        class="w-full text-[11px] font-semibold px-2 py-1 rounded-md border outline-none transition-all"
+                        :style="
+                          erroresMapeo.has(headersEditables[i])
+                            ? 'border-color: #ef4444; background: #fef2f2; color: #b91c1c'
+                            : headersEditables[i] !== preview.headers[i]
+                              ? 'border-color: var(--color-primary); background: #f0f9ff; color: var(--color-dark)'
+                              : 'border-color: var(--color-base-dark); background: var(--color-base); color: var(--color-ink)'
+                        "
+                        @dblclick="$event.target.select()"
+                        :placeholder="preview.headers[i]"
+                      />
+                    </div>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="(fila, ri) in preview.muestra"
+                  :key="ri"
+                  class="border-b transition-colors"
+                  style="border-color: var(--color-base)"
+                  @mouseenter="(e) => (e.currentTarget.style.background = 'var(--color-base)')"
+                  @mouseleave="(e) => (e.currentTarget.style.background = 'white')"
+                >
+                  <td
+                    class="px-3 py-2 text-[9px] border-r"
+                    style="border-color: var(--color-base); color: var(--color-muted)"
+                  >
+                    <div class="flex items-center justify-between gap-1">
+                      <span>{{ ri + 1 }}</span>
+                      <button
+                        @click="eliminarFila(ri)"
+                        class="opacity-50 hover:opacity-100 hover:bg-red-50 rounded p-0.5 transition-all"
+                        title="Eliminar fila"
+                      >
+                        <X :size="10" style="color: #ef4444" />
+                      </button>
+                    </div>
+                  </td>
+                  <td
+                    v-for="(h, i) in preview.headers"
+                    :key="i"
+                    class="px-3 py-2 text-[11px] border-r"
+                    style="
+                      border-color: var(--color-base);
+                      color: var(--color-ink);
+                      max-width: 200px;
+                    "
+                  >
+                    <span class="block truncate" :title="String(fila[h] ?? '')">
+                      {{ fila[h] ?? '—' }}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div
+            class="px-5 py-2.5 border-t shrink-0 flex items-center gap-2"
+            style="background: var(--color-base); border-color: var(--color-base-dark)"
+          >
+            <Info :size="12" style="color: var(--color-muted)" />
+            <p class="text-[10px]" style="color: var(--color-muted)">
+              Mostrando las primeras {{ preview.muestra.length }} filas de
+              {{ preview.totalFilas.toLocaleString() }} en total.
+            </p>
+          </div>
         </div>
 
-        <!-- PASO 4: Importando -->
+        <!-- PASO: simulacion -->
+        <div v-else-if="paso === 'simulacion'" class="flex flex-col h-full">
+          <div
+            class="flex items-center justify-between px-5 py-3 border-b shrink-0"
+            style="background: #fdfcfa; border-color: var(--color-base-dark)"
+          >
+            <div>
+              <p class="text-xs font-bold" style="color: var(--color-dark)">
+                Simulación de importación
+              </p>
+              <p class="text-[10px]" style="color: var(--color-muted)">
+                Columnas en <span style="color: #166534; font-weight: 700">verde</span> van a campos
+                fijos, en <span style="color: var(--color-primary); font-weight: 700">azul</span> al
+                JSON
+              </p>
+            </div>
+          </div>
+
+          <div class="flex-1 overflow-auto">
+            <table class="w-full text-left">
+              <thead
+                class="sticky top-0 z-10"
+                style="background: #fdfcfa; box-shadow: 0 1px 0 var(--color-base-dark)"
+              >
+                <tr>
+                  <th
+                    class="px-3 py-2.5 text-[9px] font-black w-8 text-center"
+                    style="color: var(--color-muted)"
+                  >
+                    #
+                  </th>
+                  <th
+                    v-for="col in columnasSimulacion"
+                    :key="col.key"
+                    class="px-3 py-2.5 text-[9px] font-black uppercase whitespace-nowrap"
+                    :style="{ color: col.esFijo ? '#166534' : 'var(--color-primary)' }"
+                  >
+                    {{ col.label }}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="(registro, ri) in registrosSimulados"
+                  :key="ri"
+                  class="border-b"
+                  style="border-color: var(--color-base)"
+                >
+                  <td class="px-3 py-2 text-center text-[9px]" style="color: var(--color-muted)">
+                    {{ ri + 1 }}
+                  </td>
+                  <td
+                    v-for="col in columnasSimulacion"
+                    :key="col.key"
+                    class="px-3 py-2 text-[11px] max-w-[180px]"
+                    style="color: var(--color-ink)"
+                  >
+                    <span class="block truncate">{{ registro[col.key] || '—' }}</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- ✅ Checkbox: recordar configuración para futuros archivos del padrón -->
+          <div
+            class="px-5 py-3 border-t shrink-0 flex items-center gap-3"
+            style="background: #f0f9ff; border-color: var(--color-base-dark)"
+          >
+            <input
+              type="checkbox"
+              id="checkPlantilla"
+              v-model="guardarPlantilla"
+              class="w-4 h-4 cursor-pointer"
+            />
+            <label
+              for="checkPlantilla"
+              class="text-[11px] font-medium cursor-pointer select-none"
+              style="color: var(--color-primary)"
+            >
+              Recordar esta configuración de columnas para futuros archivos de este padrón.
+            </label>
+          </div>
+
+          <!-- Error si falla el importar (se muestra al volver desde importando) -->
+          <div
+            v-if="errorMsg"
+            class="px-5 py-2 bg-red-50 text-red-600 text-[10px] font-bold border-t border-red-100 flex items-center gap-2"
+          >
+            <AlertCircle :size="12" />
+            {{ errorMsg }}
+          </div>
+        </div>
+
+        <!-- PASO: importando -->
         <div
           v-else-if="paso === 'importando'"
           class="p-12 flex flex-col items-center text-center gap-4"
         >
-          <div
-            class="w-14 h-14 rounded-xl flex items-center justify-center"
-            style="background: var(--color-base); border: 1.5px solid var(--color-base-dark)"
-          >
-            <Loader2 :size="26" class="animate-spin" style="color: var(--color-primary)" />
-          </div>
-          <div>
-            <p class="text-sm font-bold" style="color: var(--color-dark)">Importando datos...</p>
-            <p class="text-xs mt-1.5 max-w-xs" style="color: var(--color-muted)">
-              El sistema está inyectando la información. Por favor no cierres esta ventana.
-            </p>
-          </div>
+          <Loader2 :size="26" class="animate-spin" style="color: var(--color-primary)" />
+          <p class="text-sm font-bold">Importando datos...</p>
         </div>
 
-        <!-- PASO 5: Resultado -->
+        <!-- PASO: resultado -->
         <div
           v-else-if="paso === 'resultado'"
           class="p-8 flex flex-col items-center text-center gap-4"
@@ -301,74 +650,73 @@
           >
             <Check :size="26" style="color: #166534" />
           </div>
-          <div>
-            <p class="text-sm font-bold" style="color: var(--color-dark)">
-              ¡Importación completada!
-            </p>
-            <p class="text-xs mt-1" style="color: var(--color-muted)">
-              Se procesaron
-              <b style="color: var(--color-dark)">{{ resultado.procesados?.toLocaleString() }}</b>
-              registros
-              <span v-if="resultado.omitidos">
-                · <b>{{ resultado.omitidos }}</b> omitidos</span
-              >
-            </p>
-          </div>
+          <p class="text-sm font-bold">¡Importación completada!</p>
+          <p class="text-xs text-slate-500">
+            Se procesaron {{ resultado.procesados?.toLocaleString() }} registros.
+          </p>
         </div>
       </div>
 
-      <!-- Footer -->
+      <!-- ── Footer con acciones ────────────────────────────────────────────── -->
       <div
         class="flex justify-between gap-2 px-6 py-4 border-t shrink-0"
         style="background: #fdfcfa; border-color: var(--color-base-dark)"
       >
-        <!-- Botón atrás -->
-        <button
-          v-if="paso === 'mapeo'"
-          @click="paso = 'archivo'"
-          class="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg border transition-colors hover:bg-gray-50"
-          style="border-color: var(--color-base-dark); color: var(--color-muted); background: white"
-        >
-          <ChevronLeft :size="14" /> Cambiar archivo
-        </button>
-        <div v-else></div>
+        <div>
+          <button
+            v-if="paso === 'editor'"
+            @click="paso = 'archivo'"
+            class="px-4 py-2 text-xs font-semibold rounded-lg border hover:bg-gray-50"
+          >
+            <ChevronLeft :size="14" class="inline" /> Cambiar archivo
+          </button>
+          <button
+            v-if="paso === 'simulacion'"
+            @click="paso = 'editor'"
+            class="px-4 py-2 text-xs font-semibold rounded-lg border hover:bg-gray-50"
+          >
+            <ChevronLeft :size="14" class="inline" /> Editar columnas
+          </button>
+        </div>
 
         <div class="flex gap-2">
           <button
-            v-if="paso !== 'resultado' && paso !== 'importando' && paso !== 'analizando'"
+            v-if="!['resultado', 'importando', 'analizando'].includes(paso)"
             @click="cerrar"
-            class="px-4 py-2 text-xs font-semibold rounded-lg border"
-            style="
-              border-color: var(--color-base-dark);
-              color: var(--color-muted);
-              background: white;
-            "
+            class="px-4 py-2 text-xs font-semibold border rounded-lg"
           >
             Cancelar
           </button>
 
-          <!-- Analizar -->
           <button
             v-if="paso === 'archivo'"
             @click="analizarArchivo"
             :disabled="!archivo"
-            class="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg text-white disabled:opacity-50"
+            class="px-4 py-2 text-xs font-semibold rounded-lg text-white disabled:opacity-50"
             style="background: var(--color-primary)"
           >
-            Analizar estructura <ArrowRight :size="14" />
+            Analizar <ArrowRight :size="14" class="inline" />
           </button>
 
-          <!-- Importar con mapeo -->
           <button
-            v-if="paso === 'mapeo'"
-            @click="importarConMapeo"
-            class="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg text-white"
+            v-if="paso === 'editor'"
+            @click="simular"
+            :disabled="erroresMapeo.size > 0"
+            class="px-4 py-2 text-xs font-semibold rounded-lg text-white disabled:opacity-50"
+            style="background: var(--color-primary)"
+          >
+            Previsualizar <ArrowRight :size="14" class="inline" />
+          </button>
+
+          <button
+            v-if="paso === 'simulacion'"
+            @click="importar"
+            class="px-4 py-2 text-xs font-semibold rounded-lg text-white"
             style="background: var(--color-dark)"
           >
-            <FileUp :size="14" /> Confirmar e importar
+            Confirmar e importar
           </button>
 
-          <!-- Cerrar resultado -->
           <button
             v-if="paso === 'resultado'"
             @click="cerrar"
@@ -382,158 +730,3 @@
     </div>
   </div>
 </template>
-
-<script setup>
-import { ref, computed, reactive } from 'vue'
-import { X, FileUp, Loader2, AlertCircle, Check, ArrowRight, ChevronLeft } from 'lucide-vue-next'
-import api from '@/services/api'
-
-const props = defineProps({ padron: { type: Object, required: true } })
-const emit = defineEmits(['close', 'imported'])
-
-// ── Estado ────────────────────────────────────────────────────────────────────
-const paso = ref('archivo')
-const pasos = ['archivo', 'mapeo', 'resultado']
-const etiquetasPaso = {
-  archivo: 'Archivo',
-  analizando: 'Analizando',
-  mapeo: 'Mapeo',
-  importando: 'Importando',
-  resultado: 'Resultado',
-}
-const pasoIdx = computed(() => ['archivo', 'mapeo', 'resultado'].indexOf(paso.value))
-
-const archivo = ref(null)
-const isDragging = ref(false)
-const cargando = ref(false)
-const errorMsg = ref('')
-const preview = ref({ headers: [], muestra: [], totalFilas: 0 })
-const mapeo = reactive({})
-const resultado = ref({})
-
-// ── Campos destino disponibles ────────────────────────────────────────────────
-const camposDestino = [
-  { value: 'clave_unica', label: '🔑 Clave única' },
-  { value: 'nombre_completo', label: '👤 Nombre completo' },
-  { value: 'municipio', label: '🏙 Municipio' },
-  { value: 'codigo_postal', label: '📮 Código postal' },
-  { value: 'seccion', label: '🗳 Sección' },
-  { value: 'latitud', label: '📍 Latitud' },
-  { value: 'longitud', label: '📍 Longitud' },
-]
-
-// ── Archivo ────────────────────────────────────────────────────────────────────
-const handleFileSelect = (e) => seleccionarArchivo(e.target.files[0])
-const handleDrop = (e) => {
-  isDragging.value = false
-  seleccionarArchivo(e.dataTransfer.files[0])
-}
-
-const seleccionarArchivo = (file) => {
-  errorMsg.value = ''
-  if (!file) return
-  const ext = ['.csv', '.txt', '.xlsx', '.xls']
-  if (!ext.some((e) => file.name.toLowerCase().endsWith(e))) {
-    errorMsg.value = 'Formato no permitido. Usa CSV, TXT o Excel.'
-    return
-  }
-  archivo.value = file
-}
-
-// ── Analizar estructura ────────────────────────────────────────────────────────
-const analizarArchivo = async () => {
-  if (!archivo.value) return
-  paso.value = 'analizando'
-  cargando.value = true
-  errorMsg.value = ''
-
-  try {
-    const formData = new FormData()
-    formData.append('archivo', archivo.value)
-
-    const res = await api.post(`/padrones/${props.padron.id}/preview-csv`, formData, {
-      headers: { 'Content-Type': undefined },
-    })
-
-    preview.value = res.data.data
-
-    // Inicializar mapeo con sugerencias automáticas
-    initMapeoSugerido(preview.value.headers)
-
-    paso.value = 'mapeo'
-  } catch (err) {
-    errorMsg.value = err.response?.data?.message || 'Error al analizar el archivo.'
-    paso.value = 'archivo'
-  } finally {
-    cargando.value = false
-  }
-}
-
-// ── Sugerencia automática de mapeo ────────────────────────────────────────────
-const initMapeoSugerido = (headers) => {
-  const reglas = {
-    clave_unica: /^(clee|curp|rfc|folio|clave|id|matricula|expediente|num_folio)/i,
-    nombre_completo: /^(nombre|nom_estab|beneficiario|razon_social|titular)/i,
-    municipio: /^(municipio|nom_mun|delegacion|alcaldia)/i,
-    codigo_postal: /^(c\.?p\.?$|codigo_postal|cod_post|zip)/i,
-    seccion: /^(seccion|seccion_electoral)/i,
-    latitud: /^(lat$|latitud$)/i,
-    longitud: /^(lon$|lng$|longitud$)/i,
-  }
-
-  const yaAsignados = new Set()
-
-  headers.forEach((col) => {
-    const colNorm = col.toLowerCase().trim().replace(/\s+/g, '_')
-    let sugerido = '__auto__'
-
-    for (const [campo, re] of Object.entries(reglas)) {
-      if (!yaAsignados.has(campo) && re.test(colNorm)) {
-        sugerido = campo
-        yaAsignados.add(campo)
-        break
-      }
-    }
-
-    mapeo[col] = sugerido
-  })
-}
-
-// ── Valor de muestra para una columna ─────────────────────────────────────────
-const muestraValor = (col) => {
-  for (const fila of preview.value.muestra) {
-    const v = fila[col]
-    if (v && String(v).trim() !== '') return String(v).slice(0, 40)
-  }
-  return ''
-}
-
-// ── Importar con mapeo ────────────────────────────────────────────────────────
-const importarConMapeo = async () => {
-  paso.value = 'importando'
-  cargando.value = true
-
-  try {
-    const formData = new FormData()
-    formData.append('archivo', archivo.value)
-    formData.append('mapeo', JSON.stringify(mapeo))
-
-    const res = await api.post(`/padrones/${props.padron.id}/importar-mapeado`, formData, {
-      headers: { 'Content-Type': undefined },
-    })
-
-    resultado.value = res.data.data
-    paso.value = 'resultado'
-    emit('imported')
-  } catch (err) {
-    errorMsg.value = err.response?.data?.message || 'Error al importar.'
-    paso.value = 'mapeo'
-  } finally {
-    cargando.value = false
-  }
-}
-
-const cerrar = () => {
-  if (!cargando.value) emit('close')
-}
-</script>

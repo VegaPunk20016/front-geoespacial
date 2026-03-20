@@ -414,6 +414,21 @@ export const usePadronStore = defineStore('padron', {
       }
     },
 
+    async importarCsvMapeado(id, mapeo) {
+      this.actionStatus = 'loading'
+      this.errorMessage = null
+      try {
+        const res = await padronService.importCsvMapeado(id, mapeo)
+        this.actionStatus = 'success'
+        invalidarCache(id) // Limpiamos la caché del mapa/tabla
+        return res.data // Retornamos los datos para que el componente los use
+      } catch (err) {
+        this.errorMessage = err.response?.data?.message || 'Error al importar los datos'
+        this.actionStatus = 'error'
+        throw err
+      }
+    },
+
     async eliminarPadron(id, permanente = false) {
       this.actionStatus = 'loading'
       this.errorMessage = null

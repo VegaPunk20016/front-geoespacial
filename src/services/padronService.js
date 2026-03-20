@@ -98,6 +98,11 @@ export default {
     })
   },
 
+  importCsvMapeado(id, mapeo) {
+    // Axios lo enviará como JSON automáticamente, sin trucos
+    return api.post(`/padrones/${id}/importar-mapeado`, { mapeo })
+  },
+
   eliminar(id, permanente = false) {
     return api.delete(`/padrones/${id}`, { params: { permanente } })
   },

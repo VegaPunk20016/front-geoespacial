@@ -191,7 +191,6 @@ const initMap = () => {
 
   map.on('click', (e) => procesarCambioUbicacion(e.latlng.lat, e.latlng.lng))
 
-  // Si abrimos un registro que solo tiene municipio (agnóstico), volamos a él
   if (!props.lat && props.municipioSeleccionado) {
     sincronizarConMunicipio(props.municipioSeleccionado)
   }
