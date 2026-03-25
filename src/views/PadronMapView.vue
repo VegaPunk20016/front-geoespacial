@@ -198,6 +198,29 @@
         <Filter :size="20" />
       </button>
 
+      <Transition name="fade">
+        <div
+          v-if="store.mapLoading || store.loadingResumen"
+          class="absolute inset-0 z-[450] flex items-center justify-center bg-white/30 backdrop-blur-[2px] pointer-events-none"
+        >
+          <div
+            class="bg-white/90 px-6 py-4 rounded-2xl shadow-xl border border-gray-100 flex flex-col items-center gap-3"
+          >
+            <!-- Spinner elegante -->
+            <div
+              class="w-8 h-8 border-4 border-[#177DA6] border-t-transparent rounded-full animate-spin"
+            ></div>
+
+            <div class="text-center">
+              <p class="text-xs font-black text-gray-800 uppercase tracking-widest">
+                {{ store.loadingResumen ? 'Analizando Municipio' : 'Actualizando Mapa' }}
+              </p>
+              <p class="text-[10px] text-gray-500 font-medium">Consultando base de datos...</p>
+            </div>
+          </div>
+        </div>
+      </Transition>
+
       <!-- Reset view -->
       <div class="absolute top-4 right-4 z-[400]">
         <button
@@ -208,7 +231,18 @@
           <Crosshair :size="20" />
         </button>
       </div>
-
+      <div
+        v-if="store.loadingResumen"
+        class="absolute inset-0 z-[600] flex items-center justify-center bg-white/60 backdrop-blur-sm"
+      >
+        <div class="bg-white p-6 rounded-xl shadow-2xl border border-gray-100 text-center">
+          <div
+            class="w-10 h-10 border-4 border-[#177DA6] border-t-transparent rounded-full animate-spin mx-auto mb-4"
+          ></div>
+          <p class="text-sm font-bold text-gray-800">Analizando información municipal...</p>
+          <p class="text-[10px] text-gray-500 mt-1">Esta consulta puede tardar un momento</p>
+        </div>
+      </div>
       <MapView
         ref="mapRef"
         :registros="registrosActuales"
@@ -406,10 +440,30 @@ const onMapMove = (coords) => {
 
 const onZoomNivel = (nivel) => (nivelActual.value = nivel)
 
-const onMunicipioClick = async ({ nombre }) => {
+// EN TU COMPONENTE PRINCIPAL (Fuera de MapView.vue)
+
+// Le quitamos el 'async' principal para que no bloquee nada
+const onMunicipioClick = ({ nombre }) => {
   municipioSeleccionado.value = { nombre }
-  statsAgnosticas.value = await store.fetchResumenAgnostico(route.params.id, nombre)
-  if (nivelActual.value === 'estado') mapRef.value?.zoomToMunicipio(nombre)
+
+  // 1. Transición Visual (Volamos al municipio)
+  if (nivelActual.value === 'estado') {
+    mapRef.value?.zoomToMunicipio(nombre)
+  }
+
+  // 2. Forzamos los estados lógicos de la vista
+  modoMapa.value = 'clusters'
+  nivelActual.value = 'municipio'
+
+  // 3. 🚀 MAGIA ASÍNCRONA: Disparamos ambas peticiones AL MISMO TIEMPO sin que se estorben
+
+  // A) Pedimos el panel lateral (y actualizamos cuando llegue)
+  store.fetchResumenAgnostico(route.params.id, nombre).then((res) => {
+    statsAgnosticas.value = res
+  })
+
+  // B) Pedimos los círculos del mapa INMEDIATAMENTE
+  store.fetchMapaDatos(route.params.id, { nivel: 'municipio', municipio: nombre }, 'clusters')
 }
 
 const irANivel = (nivel) => {

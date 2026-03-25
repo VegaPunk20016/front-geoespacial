@@ -12,9 +12,10 @@ import dataMun from '@/data/edomex_municipios.json'
 import dataEnt from '@/data/edomex_estado.json'
 import { ZOOM_MUNICIPIO, ZOOM_PUNTO } from '@/utils/mapConstants'
 
+// ── 1. Props y Emits ───────────────────────────────────────────────────────
 const props = defineProps({
   registros: { type: Array, default: () => [] },
-  modo: { type: String, default: 'estado' },
+  modo: { type: String, default: 'estado' }, // 'estado', 'clusters', 'puntos'
   datosCoropletas: { type: Array, default: () => [] },
   municipioFiltro: { type: String, default: null },
   tieneCoordenadas: { type: Boolean, default: true },
@@ -22,50 +23,81 @@ const props = defineProps({
 
 const emit = defineEmits(['select', 'view-change', 'municipio-click', 'zoom-nivel'])
 
+// ── 2. Variables de Estado y Utilidades (Cachés) ───────────────────────────
 const mapContainer = ref(null)
-const state = { map: null, clusterLayer: null, pointsLayer: null, municipiosLayer: null }
-
-// ── FIX 2a: throttle para renderMarkers ──────────────────────────────────
-// Sin throttle: cada cambio de props dispara un render completo
-// Con throttle: máximo 1 render cada 200ms aunque lleguen muchos cambios
-let _renderTimer = null
-const renderThrottled = () => {
-  if (_renderTimer) return
-  _renderTimer = setTimeout(() => {
-    _renderTimer = null
-    renderMarkers()
-  }, 200)
+const state = {
+  map: null,
+  clusterLayer: null,
+  pointsLayer: null,
+  municipiosLayer: null,
 }
 
-// ── Coropletas ─────────────────────────────────────────────────────────────
+let _renderTimer = null
+let _prevRegistros = []
+let _markerMap = new Map()
+let lastMoveEmit = 0
+
+const normalize = (s) => s?.toUpperCase().trim()
+
+const iconCache = new Map()
+const getClusterIcon = (count) => {
+  if (iconCache.has(count)) return iconCache.get(count)
+
+  const icon = L.divIcon({
+    html: `<div class="c-bubble">${count}</div>`,
+    className: 'c-icon',
+    iconSize: [35, 35],
+  })
+
+  iconCache.set(count, icon)
+  return icon
+}
+
+const coordsCache = new WeakMap()
+const getCoords = (r) => {
+  // Nota: Verificamos _coords temporal si tu store lo inyecta, si no, usamos el cache WeakMap
+  if (r._coords) return r._coords
+  if (coordsCache.has(r)) return coordsCache.get(r)
+
+  const lat = Number(r.lat ?? r.latitud)
+  const lng = Number(r.lng ?? r.longitud)
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+
+  const coords = [lat, lng]
+  coordsCache.set(r, coords)
+  return coords
+}
+
+// ── 3. Computadas y Estilos ────────────────────────────────────────────────
 const coropletaMap = computed(() => {
   if (!props.datosCoropletas?.length) return {}
   return Object.fromEntries(
-    props.datosCoropletas.map((d) => [d.municipio?.toUpperCase().trim(), parseInt(d.total) || 0]),
+    props.datosCoropletas.map((d) => [normalize(d.municipio), parseInt(d.total) || 0]),
   )
 })
 
 const maxTotal = computed(() => Math.max(...Object.values(coropletaMap.value), 1))
 
 const getMunicipioStyle = (feature) => {
-  const nombre = feature.properties.nombre?.toUpperCase().trim()
-  const esSeleccionado = props.municipioFiltro?.toUpperCase().trim() === nombre
-  const total = coropletaMap.value[nombre] ?? 0
-  const ratio = total / maxTotal.value
+  const nombre = normalize(feature.properties.nombre)
+  const esSeleccionado = normalize(props.municipioFiltro) === nombre
 
   if (esSeleccionado) {
     return { color: '#0f172a', weight: 3, opacity: 1, fillColor: '#1e293b', fillOpacity: 0.5 }
   }
+
   return {
     color: '#1e4a6e',
     weight: 0.6,
     opacity: 0.6,
     fillColor: '#bfdbfe',
     fillOpacity: 0.45,
+    className: 'mun-path',
   }
 }
 
-// ── Inicialización ─────────────────────────────────────────────────────────
+// ── 4. Lógica del Mapa y Renderizado ───────────────────────────────────────
 const initMap = () => {
   if (state.map) return
 
@@ -75,28 +107,32 @@ const initMap = () => {
       preferCanvas: true,
       center: [19.35, -99.63],
       zoom: 9,
+      minZoom: 8,
+      maxZoom: 22,
+      scrollWheelZoom: false,
+      doubleClickZoom: false,
     }),
   )
 
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
     attribution: '&copy; INEGI',
-    maxZoom: 20,
+    maxZoom: 22,
+    maxNativeZoom: 19,
   }).addTo(state.map)
 
   state.clusterLayer = markRaw(
     L.markerClusterGroup({
       showCoverageOnHover: false,
-      maxClusterRadius: 40,
-      disableClusteringAtZoom: 17,
-      chunkedLoading: true, // FIX: no bloquear el hilo principal al agregar markers
-      chunkInterval: 100,
-      chunkDelay: 50,
-      iconCreateFunction: (c) =>
-        L.divIcon({
-          html: `<div class="c-bubble">${c.getChildCount()}</div>`,
-          className: 'c-icon',
-          iconSize: [35, 35],
-        }),
+      spiderfyOnMaxZoom: true,
+      zoomToBoundsOnClick: true,
+      maxClusterRadius: (zoom) => {
+        if (zoom >= 19) return 10
+        if (zoom >= 15) return 30
+        return 50
+      },
+      spiderlegPolylineOptions: { weight: 1.5, color: '#177da6', opacity: 0.6 },
+      chunkedLoading: true,
+      iconCreateFunction: (c) => getClusterIcon(c.getChildCount()),
     }),
   ).addTo(state.map)
 
@@ -110,16 +146,22 @@ const initMap = () => {
     L.geoJSON(dataMun, {
       style: getMunicipioStyle,
       onEachFeature: (feature, layer) => {
+        const nombre = feature.properties.nombre
+        layer.bindTooltip('', { className: 'map-tooltip', sticky: true, direction: 'top' })
+
         layer.on({
+          mouseover: (e) => {
+            const total = coropletaMap.value[normalize(nombre)] || 0
+            layer.setTooltipContent(`
+              <div class="font-bold text-xs">${nombre}</div>
+              <div class="text-[10px] opacity-80">${total.toLocaleString()} registros</div>
+            `)
+          },
           click: (e) => {
             L.DomEvent.stopPropagation(e)
-            emit('municipio-click', feature.properties)
-          },
-          mouseover: (e) => {
-            if (props.modo === 'estado') e.target.setStyle({ fillOpacity: 0.4 })
-          },
-          mouseout: (e) => {
-            if (props.modo === 'estado') e.target.setStyle(getMunicipioStyle(feature))
+            if (props.modo === 'estado' || props.municipioFiltro !== nombre) {
+              emit('municipio-click', feature.properties)
+            }
           },
         })
       },
@@ -130,7 +172,11 @@ const initMap = () => {
 }
 
 const handleMoveEnd = () => {
-  const b = state.map.getBounds()
+  const now = Date.now()
+  if (now - lastMoveEmit < 200) return
+  lastMoveEmit = now
+
+  const b = state.map.getBounds().pad(0.2)
   const zoom = state.map.getZoom()
   const nivel = zoom >= ZOOM_PUNTO ? 'punto' : zoom >= ZOOM_MUNICIPIO ? 'municipio' : 'estado'
 
@@ -145,27 +191,47 @@ const handleMoveEnd = () => {
   })
 }
 
-// ── FIX 2b: renderizado incremental con diff ──────────────────────────────
-// Problema original: clearLayers() + recrear TODOS los markers en cada render
-// → con 5000 puntos esto congela la UI 200-500ms en cada movimiento del mapa
-//
-// Solución: comparar el array nuevo contra el anterior y solo agregar/quitar
-// los que cambiaron. Si el cambio es >50% se hace reset completo (más rápido).
-let _prevRegistros = []
-let _markerMap = new Map() // id → marker (para diff)
+const renderThrottled = () => {
+  clearTimeout(_renderTimer)
+  _renderTimer = setTimeout(() => {
+    renderMarkers()
+  }, 150)
+}
 
 const renderMarkers = () => {
   if (!state.map) return
-  if (props.modo === 'estado' || !props.registros.length) {
-    _clearAll()
+
+  if (props.modo === 'estado') {
+    _renderSuperClusterEstado()
     return
   }
 
   if (props.modo === 'clusters') {
     _renderClusters()
-  } else {
+  } else if (props.modo === 'puntos') {
     _renderPuntosDiff()
   }
+}
+
+const _renderSuperClusterEstado = () => {
+  _clearAll()
+  const centroEstado = [19.35, -99.63]
+  const totalGeneral = props.datosCoropletas.reduce((a, b) => a + (parseInt(b.total) || 0), 0)
+
+  if (totalGeneral === 0) return
+
+  const icon = L.divIcon({
+    html: `
+      <div class="c-bubble state-bubble">
+        <span class="label">TOTAL PADRÓN</span>
+        <span class="count">${totalGeneral.toLocaleString()}</span>
+        <span class="instruction">Selecciona un municipio</span>
+      </div>`,
+    className: 'c-icon-state',
+    iconSize: [120, 120],
+  })
+
+  L.marker(centroEstado, { icon, interactive: false }).addTo(state.pointsLayer)
 }
 
 const _clearAll = () => {
@@ -176,54 +242,69 @@ const _clearAll = () => {
 }
 
 const _renderClusters = () => {
-  // Clusters del servidor: pocos elementos (<2000), reset completo es rápido
   state.pointsLayer.clearLayers()
   state.clusterLayer.clearLayers()
 
-  props.registros.forEach((r) => {
-    const circle = L.circleMarker([r.lat, r.lng], {
-      radius: Math.min(5 + Math.sqrt(r.count || 1) * 2, 40),
-      fillColor: '#3b82f6',
-      color: '#fff',
-      weight: 1.5,
-      fillOpacity: 0.8,
+  for (let i = 0; i < props.registros.length; i++) {
+    const r = props.registros[i]
+    const coords = getCoords(r)
+    if (!coords) continue
+
+    const icon = getClusterIcon(r.count || 1)
+
+    const marker = L.marker(coords, { icon })
+    marker.on('click', () => {
+      state.map.flyTo(coords, ZOOM_PUNTO, { duration: 1.0 })
     })
-    circle.addTo(state.pointsLayer)
-  })
+
+    marker.addTo(state.pointsLayer)
+  }
 }
 
 const _renderPuntosDiff = () => {
-  const nuevos = props.registros
-  const prevIds = new Set(_prevRegistros.map((r) => r.id))
-  const nuevosIds = new Set(nuevos.map((r) => r.id))
+  state.pointsLayer.clearLayers()
 
-  // Si el cambio es muy grande → reset completo (más rápido que N operaciones de diff)
-  const cambios =
-    nuevos.filter((r) => !prevIds.has(r.id)).length +
-    _prevRegistros.filter((r) => !nuevosIds.has(r.id)).length
+  const nuevos = props.registros
+  const prevMap = new Map(_prevRegistros.map((r) => [r.id, r]))
+  const newMap = new Map(nuevos.map((r) => [r.id, r]))
+
+  let cambios = 0
+
+  for (const id of newMap.keys()) {
+    if (!prevMap.has(id)) cambios++
+  }
+  for (const id of prevMap.keys()) {
+    if (!newMap.has(id)) cambios++
+  }
 
   if (cambios > nuevos.length * 0.5) {
     state.clusterLayer.clearLayers()
     _markerMap.clear()
+
     const markers = _crearMarkers(nuevos)
-    state.clusterLayer.addLayers(markers) // bulk — mucho más rápido que addLayer en loop
+    if (markers.length) state.clusterLayer.addLayers(markers)
     _prevRegistros = nuevos
     return
   }
 
-  // Diff: quitar los que ya no están
-  const aQuitar = _prevRegistros.filter((r) => !nuevosIds.has(r.id))
-  aQuitar.forEach((r) => {
-    const m = _markerMap.get(r.id)
-    if (m) {
-      state.clusterLayer.removeLayer(m)
-      _markerMap.delete(r.id)
+  for (const [id, r] of prevMap) {
+    if (!newMap.has(id)) {
+      const m = _markerMap.get(id)
+      if (m) {
+        state.clusterLayer.removeLayer(m)
+        _markerMap.delete(id)
+      }
     }
-  })
+  }
 
-  // Agregar los nuevos
-  const aAgregar = nuevos.filter((r) => !prevIds.has(r.id))
-  const markers = _crearMarkers(aAgregar)
+  const markers = []
+  for (const [id, r] of newMap) {
+    if (!prevMap.has(id)) {
+      const m = _crearMarkers([r])
+      if (m.length) markers.push(...m)
+    }
+  }
+
   if (markers.length) state.clusterLayer.addLayers(markers)
 
   _prevRegistros = nuevos
@@ -231,47 +312,109 @@ const _renderPuntosDiff = () => {
 
 const _crearMarkers = (registros) => {
   const markers = []
-  registros.forEach((r) => {
-    const lat = parseFloat(r.latitud)
-    const lng = parseFloat(r.longitud)
-    if (isNaN(lat) || isNaN(lng)) return
 
-    const m = L.marker([lat, lng], {
+  for (let i = 0; i < registros.length; i++) {
+    const r = registros[i]
+    const coords = getCoords(r)
+    if (!coords) continue
+
+    const m = L.marker(coords, {
       icon: L.divIcon({
         className: 'p-icon',
         html: '<div class="p-dot"></div>',
-        iconSize: [10, 10],
+        iconSize: [12, 12],
+        iconAnchor: [6, 6],
       }),
     }).on('click', () => emit('select', r))
 
     _markerMap.set(r.id, m)
     markers.push(m)
-  })
+  }
+
   return markers
 }
 
-// ── API Externa ────────────────────────────────────────────────────────────
+// ── 5. Reglas de Movimiento ────────────────────────────────────────────────
+const aplicarRestriccionesMovimiento = () => {
+  if (!state.map) return
+
+  if (props.modo === 'estado' || !props.municipioFiltro) {
+    state.map.dragging.enable()
+    state.map.scrollWheelZoom.disable()
+    state.map.setMaxBounds(null)
+
+    state.map.setMinZoom(8)
+    state.map.setMaxZoom(18)
+    return
+  }
+
+  const municipioMap = new Map(dataMun.features.map((f) => [normalize(f.properties.nombre), f]))
+  const feat = municipioMap.get(normalize(props.municipioFiltro))
+
+  if (feat) {
+    const layer = L.geoJSON(feat)
+    const bounds = layer.getBounds()
+
+    if (props.modo === 'clusters') {
+      state.map.dragging.disable()
+      state.map.scrollWheelZoom.disable()
+      state.map.doubleClickZoom.disable()
+
+      const fitZoom = state.map.getBoundsZoom(bounds, false, [20, 20])
+      state.map.setMinZoom(fitZoom)
+      state.map.setMaxZoom(fitZoom)
+    } else if (props.modo === 'puntos') {
+      state.map.dragging.enable()
+      state.map.scrollWheelZoom.enable()
+      state.map.doubleClickZoom.enable()
+
+      state.map.setMaxBounds(bounds.pad(0.1))
+      state.map.setMinZoom(ZOOM_PUNTO - 1)
+      state.map.setMaxZoom(22)
+    }
+  }
+}
+
+// ── 6. API Externa (Expose) ────────────────────────────────────────────────
 defineExpose({
   zoomToMunicipio: (nombre) => {
     const layer = state.municipiosLayer
       .getLayers()
-      .find((l) => l.feature.properties.nombre?.toUpperCase() === nombre?.toUpperCase())
-    if (layer) state.map.fitBounds(layer.getBounds(), { padding: [20, 20] })
+      .find((l) => normalize(l.feature.properties.nombre) === normalize(nombre))
+
+    if (layer) state.map.flyToBounds(layer.getBounds(), { padding: [20, 20], duration: 1.0 })
   },
-  resetView: () => state.map.flyTo([19.35, -99.63], 9),
+  resetView: () => {
+    if (!state.map) return
+    state.map.scrollWheelZoom.disable()
+    state.map.dragging.enable()
+    state.map.setMaxBounds(null)
+    state.map.setMinZoom(8)
+    state.map.setMaxZoom(18)
+    state.map.flyTo([19.35, -99.63], 9, { duration: 1.2 })
+  },
 })
 
-// ── Watchers ───────────────────────────────────────────────────────────────
-// FIX: usar renderThrottled en lugar de renderMarkers directo
+// ── 7. Watchers y Ciclo de Vida ────────────────────────────────────────────
 watch(() => props.registros, renderThrottled, { deep: false })
 
 watch([() => props.datosCoropletas, () => props.municipioFiltro], () => {
   state.municipiosLayer?.setStyle(getMunicipioStyle)
 })
 
+watch(
+  () => props.modo,
+  () => {
+    aplicarRestriccionesMovimiento()
+    renderMarkers()
+  },
+)
+
 onMounted(async () => {
   await nextTick()
   initMap()
+  aplicarRestriccionesMovimiento()
+  renderMarkers()
 })
 
 onUnmounted(() => {
@@ -282,6 +425,27 @@ onUnmounted(() => {
 </script>
 
 <style>
+/* Animación suave para los municipios */
+path.mun-path {
+  transition:
+    fill 0.3s ease,
+    fill-opacity 0.3s ease;
+}
+
+/* Tooltip Elegante */
+.map-tooltip {
+  background: #0f172a !important;
+  color: white !important;
+  border: none !important;
+  border-radius: 8px !important;
+  padding: 6px 12px !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2) !important;
+}
+.map-tooltip::before {
+  border-top-color: #0f172a !important;
+}
+
+/* Burbujas de Cluster */
 .c-bubble {
   width: 35px;
   height: 35px;
@@ -295,18 +459,82 @@ onUnmounted(() => {
   font-size: 10px;
   font-weight: 800;
   box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+  transition: all 0.2s ease;
 }
+
+/* Burbuja Gigante del Estado */
+.state-bubble {
+  width: 120px !important;
+  height: 120px !important;
+  background: rgba(1, 39, 55, 0.95) !important;
+  flex-direction: column;
+  animation: pulse-blue 2s infinite;
+  border: 4px solid white !important;
+}
+
+.state-bubble .label {
+  font-size: 8px;
+  opacity: 0.7;
+  letter-spacing: 1px;
+}
+.state-bubble .count {
+  font-size: 22px;
+  margin: 2px 0;
+}
+.state-bubble .instruction {
+  font-size: 9px;
+  color: #fbbf24;
+  margin-top: 5px;
+  text-align: center;
+  font-weight: 400;
+}
+
+@keyframes pulse-blue {
+  0% {
+    box-shadow: 0 0 0 0 rgba(1, 39, 55, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 20px rgba(1, 39, 55, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(1, 39, 55, 0);
+  }
+}
+
+/* Iconos Transparentes */
 .c-icon,
-.p-icon {
+.p-icon,
+.c-icon-state {
   background: transparent;
   border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
+
+/* Puntos Individuales */
 .p-dot {
   width: 10px;
   height: 10px;
   background: #0f172a;
   border: 1.5px solid white;
   border-radius: 50%;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+  display: block;
+}
+
+.p-dot:hover {
+  cursor: pointer;
+  background: #177da6;
+  transform: scale(1.2);
+  transition: all 0.2s ease;
+}
+
+.c-bubble:hover:not(.state-bubble) {
+  cursor: pointer;
+  background: #177da6;
+  transform: scale(1.15);
+  box-shadow: 0 6px 20px rgba(23, 125, 166, 0.6);
+  z-index: 1000;
 }
 </style>

@@ -49,6 +49,28 @@
           </div>
         </div>
 
+        <!-- Nivel de zoom actual (Restaurado) -->
+        <div v-if="padronSeleccionadoId" class="space-y-1.5">
+          <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Nivel</label>
+          <div class="flex gap-1.5">
+            <button
+              v-for="btn in botonesNivel"
+              :key="btn.nivel"
+              @click="irANivel(btn.nivel)"
+              :title="btn.label"
+              :class="[
+                'flex-1 py-2 rounded-md text-xs font-bold transition-all flex items-center justify-center gap-1.5',
+                nivelActual === btn.nivel
+                  ? 'bg-[#012737] text-white'
+                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200',
+              ]"
+            >
+              <component :is="btn.icon" :size="13" />
+              <span>{{ btn.label }}</span>
+            </button>
+          </div>
+        </div>
+
         <!-- Selector de municipio -->
         <div v-if="padronSeleccionadoId" class="space-y-1.5">
           <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">
@@ -289,7 +311,18 @@ import { useRoute, useRouter } from 'vue-router'
 import { usePadronStore } from '@/stores/padronStore'
 import { useMunicipios } from '@/composables/useMunicipios'
 import MapView from '@/components/MapView.vue'
-import { Database, Filter, X, Search, Map, MapPin, Crosshair, ArrowLeft } from 'lucide-vue-next'
+// Agregado Building2 para los botones de niveles
+import {
+  Database,
+  Filter,
+  X,
+  Search,
+  Map,
+  MapPin,
+  Crosshair,
+  ArrowLeft,
+  Building2,
+} from 'lucide-vue-next'
 
 const router = useRouter()
 const route = useRoute()
@@ -313,6 +346,7 @@ const tieneCoordenadas = ref(false)
 const busquedaMunicipio = ref('')
 const dropdownAbierto = ref(false)
 let _closeTimer = null
+let _moveTimer = null
 
 // Filtrar catálogo INEGI según lo que escribe el usuario
 const municipiosFiltrados = computed(() => {
@@ -327,8 +361,6 @@ const cerrarDropdownDelay = () => {
   }, 150)
 }
 
-let _moveTimer = null
-
 // El usuario elige un municipio del dropdown
 const elegirMunicipio = (mun) => {
   busquedaMunicipio.value = mun.nombre
@@ -336,11 +368,18 @@ const elegirMunicipio = (mun) => {
   onMunicipioClick({ nombre: mun.nombre, cvegeo: mun.cvegeo })
 }
 
+// CORRECCIÓN: Resetea por completo los estados del mapa al limpiar
 const limpiarMunicipio = () => {
   busquedaMunicipio.value = ''
   dropdownAbierto.value = false
   municipioSeleccionado.value = null
   statsAgnosticas.value = null
+  registroSeleccionado.value = null
+
+  // Regresar al estado global
+  modoMapa.value = 'estado'
+  nivelActual.value = 'estado'
+  mapRef.value?.resetView()
 }
 
 // ── Computed ───────────────────────────────────────────────────────────────
@@ -358,6 +397,16 @@ const totalEnVista = computed(() => {
   if (modoMapa.value === 'clusters')
     return store.clusters.reduce((a, c) => a + (parseInt(c.count) || 0), 0).toLocaleString()
   return store.beneficiarios.length.toLocaleString()
+})
+
+// CORRECCIÓN: Computada necesaria para los botones "Estado", "Municipio", "Detalle"
+const botonesNivel = computed(() => {
+  const base = [
+    { nivel: 'estado', label: 'Estado', icon: Map },
+    { nivel: 'municipio', label: 'Municipio', icon: Building2 },
+  ]
+  if (tieneCoordenadas.value) base.push({ nivel: 'punto', label: 'Detalle', icon: Crosshair })
+  return base
 })
 
 // Helpers para el panel de detalle
@@ -392,11 +441,8 @@ const datosExtra = computed(() => {
 
 // ── Cambiar padrón ─────────────────────────────────────────────────────────
 const onCambiarPadron = async () => {
-  municipioSeleccionado.value = null
-  statsAgnosticas.value = null
-  registroSeleccionado.value = null
+  limpiarMunicipio()
   datosCoropletas.value = []
-  modoMapa.value = 'estado'
   store.clusters = []
   store.beneficiarios = []
 
@@ -409,7 +455,16 @@ const onCambiarPadron = async () => {
   }
 }
 
-// ── Movimiento del mapa ────────────────────────────────────────────────────
+// ── Funciones de Navegación del Mapa ───────────────────────────────────────
+// CORRECCIÓN: Función vital para interactuar con los botones de arriba
+const irANivel = (nivel) => {
+  if (nivel === 'estado') {
+    limpiarMunicipio()
+  } else if (nivel === 'municipio' && municipioSeleccionado.value) {
+    mapRef.value?.zoomToMunicipio(municipioSeleccionado.value.nombre)
+  }
+}
+
 const onMapMove = (coords) => {
   clearTimeout(_moveTimer)
   _moveTimer = setTimeout(async () => {
@@ -435,7 +490,10 @@ const onZoomNivel = (nivel) => (nivelActual.value = nivel)
 const onMunicipioClick = async ({ nombre }) => {
   municipioSeleccionado.value = { nombre }
   statsAgnosticas.value = await store.fetchResumenAgnostico(padronSeleccionadoId.value, nombre)
-  mapRef.value?.zoomToMunicipio(nombre)
+
+  if (nivelActual.value === 'estado') {
+    mapRef.value?.zoomToMunicipio(nombre)
+  }
 }
 
 // ── Click en registro ──────────────────────────────────────────────────────
@@ -482,4 +540,4 @@ onMounted(async () => {
 .fade-leave-to {
   opacity: 0;
 }
-</style>
+</style> 

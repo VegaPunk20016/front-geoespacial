@@ -6,6 +6,7 @@ import padronService from '../services/padronService'
 // ─────────────────────────────────────────────────────────────────────────────
 const CACHE_TTL = 5 * 60 * 1000
 const boundsCache = new Map()
+let _mapAbortController = null
 
 const buildCacheKey = (modo, id, filtros) => {
   const f = normalizarBounds(filtros)
@@ -125,8 +126,6 @@ export const usePadronStore = defineStore('padron', {
     // =========================================================
     // MAPA — AbortController + requestId + cache de bounds
     // =========================================================
-
-    _mapAbortController: null,
 
     async fetchMapaDatos(id, coords, modo) {
       const filtros = normalizarBounds(coords)
@@ -306,12 +305,19 @@ export const usePadronStore = defineStore('padron', {
     // =========================================================
 
     async fetchResumenAgnostico(id, municipio = null) {
+      // 1. Encendemos el interruptor de carga
+      this.loadingResumen = true
+
       try {
         const res = await padronService.getResumen(id, municipio)
+        // Retornamos la data limpia
         return res.data.data
       } catch (err) {
         console.error('Error al obtener resumen:', err)
         return null
+      } finally {
+        // 2. Apagamos el interruptor (Pase lo que pase)
+        this.loadingResumen = false
       }
     },
 

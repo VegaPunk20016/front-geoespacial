@@ -637,6 +637,7 @@ const cerrar = () => {
         >
           <Loader2 :size="26" class="animate-spin" style="color: var(--color-primary)" />
           <p class="text-sm font-bold">Importando datos...</p>
+          <p>no cierres la ventana</p>
         </div>
 
         <!-- PASO: resultado -->
