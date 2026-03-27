@@ -15,15 +15,21 @@ import { ZOOM_MUNICIPIO, ZOOM_PUNTO } from '@/utils/mapConstants'
 // ── 1. Props y Emits ───────────────────────────────────────────────────────
 const props = defineProps({
   registros: { type: Array, default: () => [] },
-  modo: { type: String, default: 'estado' }, // 'estado', 'clusters', 'puntos'
+  modo: { type: String, default: 'estado' }, // 'estado' | 'clusters' | 'puntos'
   datosCoropletas: { type: Array, default: () => [] },
   municipioFiltro: { type: String, default: null },
   tieneCoordenadas: { type: Boolean, default: true },
 })
 
-const emit = defineEmits(['select', 'view-change', 'municipio-click', 'zoom-nivel'])
+const emit = defineEmits([
+  'select',
+  'view-change',
+  'municipio-click',
+  'zoom-nivel',
+  'cluster-click',
+])
 
-// ── 2. Variables de Estado y Utilidades (Cachés) ───────────────────────────
+// ── 2. Estado Interno y Cachés ─────────────────────────────────────────────
 const mapContainer = ref(null)
 const state = {
   map: null,
@@ -32,6 +38,9 @@ const state = {
   municipiosLayer: null,
 }
 
+// Mapa de capas por nombre para acceso O(1)
+const _municipioLayerMap = new Map()
+
 let _renderTimer = null
 let _prevRegistros = []
 let _markerMap = new Map()
@@ -39,31 +48,27 @@ let lastMoveEmit = 0
 
 const normalize = (s) => s?.toUpperCase().trim()
 
+// Caché de iconos de cluster para evitar re-crear objetos
 const iconCache = new Map()
 const getClusterIcon = (count) => {
   if (iconCache.has(count)) return iconCache.get(count)
-
   const icon = L.divIcon({
     html: `<div class="c-bubble">${count}</div>`,
     className: 'c-icon',
     iconSize: [35, 35],
   })
-
   iconCache.set(count, icon)
   return icon
 }
 
+// Caché de coordenadas para evitar Number() repetido
 const coordsCache = new WeakMap()
 const getCoords = (r) => {
-  // Nota: Verificamos _coords temporal si tu store lo inyecta, si no, usamos el cache WeakMap
   if (r._coords) return r._coords
   if (coordsCache.has(r)) return coordsCache.get(r)
-
   const lat = Number(r.lat ?? r.latitud)
   const lng = Number(r.lng ?? r.longitud)
-
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
-
   const coords = [lat, lng]
   coordsCache.set(r, coords)
   return coords
@@ -82,9 +87,24 @@ const maxTotal = computed(() => Math.max(...Object.values(coropletaMap.value), 1
 const getMunicipioStyle = (feature) => {
   const nombre = normalize(feature.properties.nombre)
   const esSeleccionado = normalize(props.municipioFiltro) === nombre
+  const total = coropletaMap.value[nombre] || 0
 
   if (esSeleccionado) {
-    return { color: '#0f172a', weight: 3, opacity: 1, fillColor: '#1e293b', fillOpacity: 0.5 }
+    return { color: '#0f172a', weight: 3, opacity: 1, fillColor: '#177DA6', fillOpacity: 0.55 }
+  }
+
+  // Coropleta: más registros → color más intenso
+  if (total > 0) {
+    const ratio = Math.min(total / maxTotal.value, 1)
+    const fillOpacity = 0.15 + ratio * 0.55
+    return {
+      color: '#1e4a6e',
+      weight: 0.6,
+      opacity: 0.6,
+      fillColor: '#177DA6',
+      fillOpacity,
+      className: 'mun-path',
+    }
   }
 
   return {
@@ -92,12 +112,12 @@ const getMunicipioStyle = (feature) => {
     weight: 0.6,
     opacity: 0.6,
     fillColor: '#bfdbfe',
-    fillOpacity: 0.45,
+    fillOpacity: 0.25,
     className: 'mun-path',
   }
 }
 
-// ── 4. Lógica del Mapa y Renderizado ───────────────────────────────────────
+// ── 4. Inicialización del Mapa ─────────────────────────────────────────────
 const initMap = () => {
   if (state.map) return
 
@@ -138,31 +158,33 @@ const initMap = () => {
 
   state.pointsLayer = markRaw(L.layerGroup()).addTo(state.map)
 
+  // Borde del estado (no interactivo)
   L.geoJSON(dataEnt, {
     style: { color: '#1e293b', weight: 2, fillOpacity: 0, interactive: false },
   }).addTo(state.map)
 
+  // Capa de municipios con tooltips y eventos
   state.municipiosLayer = markRaw(
     L.geoJSON(dataMun, {
       style: getMunicipioStyle,
       onEachFeature: (feature, layer) => {
         const nombre = feature.properties.nombre
+
+        // Registrar en mapa de acceso rápido para zoomToMunicipio
+        _municipioLayerMap.set(normalize(nombre), layer)
+
         layer.bindTooltip('', { className: 'map-tooltip', sticky: true, direction: 'top' })
 
         layer.on({
-          mouseover: (e) => {
+          // Dejamos el hover intacto
+          mouseover: () => {
             const total = coropletaMap.value[normalize(nombre)] || 0
             layer.setTooltipContent(`
               <div class="font-bold text-xs">${nombre}</div>
               <div class="text-[10px] opacity-80">${total.toLocaleString()} registros</div>
             `)
           },
-          click: (e) => {
-            L.DomEvent.stopPropagation(e)
-            if (props.modo === 'estado' || props.municipioFiltro !== nombre) {
-              emit('municipio-click', feature.properties)
-            }
-          },
+          // ELIMINAMOS EL EVENTO CLICK AQUÍ
         })
       },
     }),
@@ -171,6 +193,7 @@ const initMap = () => {
   state.map.on('moveend', handleMoveEnd)
 }
 
+// ── 5. Eventos del Mapa ────────────────────────────────────────────────────
 const handleMoveEnd = () => {
   const now = Date.now()
   if (now - lastMoveEmit < 200) return
@@ -191,11 +214,10 @@ const handleMoveEnd = () => {
   })
 }
 
+// ── 6. Renderizado de Markers ──────────────────────────────────────────────
 const renderThrottled = () => {
   clearTimeout(_renderTimer)
-  _renderTimer = setTimeout(() => {
-    renderMarkers()
-  }, 150)
+  _renderTimer = setTimeout(renderMarkers, 150)
 }
 
 const renderMarkers = () => {
@@ -206,18 +228,13 @@ const renderMarkers = () => {
     return
   }
 
-  if (props.modo === 'clusters') {
-    _renderClusters()
-  } else if (props.modo === 'puntos') {
-    _renderPuntosDiff()
-  }
+  if (props.modo === 'clusters') _renderClusters()
+  else if (props.modo === 'puntos') _renderPuntosDiff()
 }
 
 const _renderSuperClusterEstado = () => {
   _clearAll()
-  const centroEstado = [19.35, -99.63]
   const totalGeneral = props.datosCoropletas.reduce((a, b) => a + (parseInt(b.total) || 0), 0)
-
   if (totalGeneral === 0) return
 
   const icon = L.divIcon({
@@ -231,7 +248,7 @@ const _renderSuperClusterEstado = () => {
     iconSize: [120, 120],
   })
 
-  L.marker(centroEstado, { icon, interactive: false }).addTo(state.pointsLayer)
+  L.marker([19.35, -99.63], { icon, interactive: false }).addTo(state.pointsLayer)
 }
 
 const _clearAll = () => {
@@ -245,19 +262,44 @@ const _renderClusters = () => {
   state.pointsLayer.clearLayers()
   state.clusterLayer.clearLayers()
 
+  const markersParaAgrupar = []
+
   for (let i = 0; i < props.registros.length; i++) {
     const r = props.registros[i]
     const coords = getCoords(r)
     if (!coords) continue
 
-    const icon = getClusterIcon(r.count || 1)
+    // 1. Si el backend YA mandó el cluster armado (ej. count = 50)
+    if (r.count && parseInt(r.count) > 1) {
+      const marker = L.marker(coords, { icon: getClusterIcon(r.count) })
 
-    const marker = L.marker(coords, { icon })
-    marker.on('click', () => {
-      state.map.flyTo(coords, ZOOM_PUNTO, { duration: 1.0 })
-    })
+      marker.on('click', () => {
+        emit('cluster-click', r)
+        state.map.flyTo(coords, ZOOM_PUNTO, { duration: 1.0 })
+      })
 
-    marker.addTo(state.pointsLayer)
+      marker.addTo(state.pointsLayer) // Se pinta directo porque ya viene agrupado
+    }
+    // 2. Si el backend mandó un registro individual (count = 1 o vacío)
+    else {
+      const marker = L.marker(coords, {
+        icon: L.divIcon({
+          className: 'p-icon',
+          html: '<div class="p-dot"></div>',
+          iconSize: [12, 12],
+          iconAnchor: [6, 6],
+        }),
+      })
+
+      marker.on('click', () => emit('select', r))
+      markersParaAgrupar.push(marker)
+    }
+  }
+
+  // 3. ¡LA MAGIA OCURRE AQUÍ! Le damos todos los puntos sueltos al
+  // plugin de Leaflet para que él haga los cálculos y pinte los globos grandes.
+  if (markersParaAgrupar.length > 0) {
+    state.clusterLayer.addLayers(markersParaAgrupar)
   }
 }
 
@@ -269,7 +311,6 @@ const _renderPuntosDiff = () => {
   const newMap = new Map(nuevos.map((r) => [r.id, r]))
 
   let cambios = 0
-
   for (const id of newMap.keys()) {
     if (!prevMap.has(id)) cambios++
   }
@@ -277,17 +318,18 @@ const _renderPuntosDiff = () => {
     if (!newMap.has(id)) cambios++
   }
 
+  // Si más del 50% cambió → render completo
   if (cambios > nuevos.length * 0.5) {
     state.clusterLayer.clearLayers()
     _markerMap.clear()
-
     const markers = _crearMarkers(nuevos)
     if (markers.length) state.clusterLayer.addLayers(markers)
     _prevRegistros = nuevos
     return
   }
 
-  for (const [id, r] of prevMap) {
+  // Render diferencial: solo añade/quita lo necesario
+  for (const [id] of prevMap) {
     if (!newMap.has(id)) {
       const m = _markerMap.get(id)
       if (m) {
@@ -297,22 +339,18 @@ const _renderPuntosDiff = () => {
     }
   }
 
-  const markers = []
+  const toAdd = []
   for (const [id, r] of newMap) {
-    if (!prevMap.has(id)) {
-      const m = _crearMarkers([r])
-      if (m.length) markers.push(...m)
-    }
+    if (!prevMap.has(id)) toAdd.push(r)
   }
 
+  const markers = _crearMarkers(toAdd)
   if (markers.length) state.clusterLayer.addLayers(markers)
-
   _prevRegistros = nuevos
 }
 
 const _crearMarkers = (registros) => {
   const markers = []
-
   for (let i = 0; i < registros.length; i++) {
     const r = registros[i]
     const coords = getCoords(r)
@@ -330,60 +368,45 @@ const _crearMarkers = (registros) => {
     _markerMap.set(r.id, m)
     markers.push(m)
   }
-
   return markers
 }
 
-// ── 5. Reglas de Movimiento ────────────────────────────────────────────────
 const aplicarRestriccionesMovimiento = () => {
   if (!state.map) return
 
-  if (props.modo === 'estado' || !props.municipioFiltro) {
-    state.map.dragging.enable()
-    state.map.scrollWheelZoom.disable()
-    state.map.setMaxBounds(null)
+  // Paneo y zoom libre siempre, sin importar el modo
+  state.map.dragging.enable()
+  state.map.scrollWheelZoom.enable()
+  state.map.doubleClickZoom.enable()
 
-    state.map.setMinZoom(8)
-    state.map.setMaxZoom(18)
-    return
-  }
+  // Quitamos la restricción de bordes cerrados
+  state.map.setMaxBounds(null)
 
-  const municipioMap = new Map(dataMun.features.map((f) => [normalize(f.properties.nombre), f]))
-  const feat = municipioMap.get(normalize(props.municipioFiltro))
-
-  if (feat) {
-    const layer = L.geoJSON(feat)
-    const bounds = layer.getBounds()
-
-    if (props.modo === 'clusters') {
-      state.map.dragging.disable()
-      state.map.scrollWheelZoom.disable()
-      state.map.doubleClickZoom.disable()
-
-      const fitZoom = state.map.getBoundsZoom(bounds, false, [20, 20])
-      state.map.setMinZoom(fitZoom)
-      state.map.setMaxZoom(fitZoom)
-    } else if (props.modo === 'puntos') {
-      state.map.dragging.enable()
-      state.map.scrollWheelZoom.enable()
-      state.map.doubleClickZoom.enable()
-
-      state.map.setMaxBounds(bounds.pad(0.1))
-      state.map.setMinZoom(ZOOM_PUNTO - 1)
-      state.map.setMaxZoom(22)
-    }
-  }
+  // Límites generales para no alejarse más allá del estado ni acercarse demasiado
+  state.map.setMinZoom(8)
+  state.map.setMaxZoom(22)
 }
 
-// ── 6. API Externa (Expose) ────────────────────────────────────────────────
+// ── 8. API Expuesta al Padre ───────────────────────────────────────────────
 defineExpose({
+  /**
+   * Vuela con animación suave al bounding box del municipio seleccionado.
+   * Usa el Map de capas construido en onEachFeature para acceso O(1).
+   */
   zoomToMunicipio: (nombre) => {
-    const layer = state.municipiosLayer
-      .getLayers()
-      .find((l) => normalize(l.feature.properties.nombre) === normalize(nombre))
-
-    if (layer) state.map.flyToBounds(layer.getBounds(), { padding: [20, 20], duration: 1.0 })
+    const layer = _municipioLayerMap.get(normalize(nombre))
+    if (!layer || !state.map) return
+    state.map.flyToBounds(layer.getBounds(), { padding: [30, 30], duration: 1.0, maxZoom: 13 })
   },
+
+  /**
+   * Vuela a las coordenadas de un registro específico (útil para resultados de búsqueda).
+   */
+  flyToRegistro: (lat, lng, zoom = 15) => {
+    if (!state.map) return
+    state.map.flyTo([lat, lng], zoom, { duration: 1.0 })
+  },
+
   resetView: () => {
     if (!state.map) return
     state.map.scrollWheelZoom.disable()
@@ -395,7 +418,7 @@ defineExpose({
   },
 })
 
-// ── 7. Watchers y Ciclo de Vida ────────────────────────────────────────────
+// ── 9. Watchers y Ciclo de Vida ────────────────────────────────────────────
 watch(() => props.registros, renderThrottled, { deep: false })
 
 watch([() => props.datosCoropletas, () => props.municipioFiltro], () => {
@@ -418,21 +441,20 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  if (_renderTimer) clearTimeout(_renderTimer)
+  clearTimeout(_renderTimer)
   _markerMap.clear()
+  _municipioLayerMap.clear()
   state.map?.remove()
 })
 </script>
 
 <style>
-/* Animación suave para los municipios */
 path.mun-path {
   transition:
     fill 0.3s ease,
     fill-opacity 0.3s ease;
 }
 
-/* Tooltip Elegante */
 .map-tooltip {
   background: #0f172a !important;
   color: white !important;
@@ -445,7 +467,7 @@ path.mun-path {
   border-top-color: #0f172a !important;
 }
 
-/* Burbujas de Cluster */
+/* Cluster */
 .c-bubble {
   width: 35px;
   height: 35px;
@@ -461,8 +483,15 @@ path.mun-path {
   box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
   transition: all 0.2s ease;
 }
+.c-bubble:hover:not(.state-bubble) {
+  cursor: pointer;
+  background: #177da6;
+  transform: scale(1.15);
+  box-shadow: 0 6px 20px rgba(23, 125, 166, 0.6);
+  z-index: 1000;
+}
 
-/* Burbuja Gigante del Estado */
+/* Burbuja estado */
 .state-bubble {
   width: 120px !important;
   height: 120px !important;
@@ -471,7 +500,6 @@ path.mun-path {
   animation: pulse-blue 2s infinite;
   border: 4px solid white !important;
 }
-
 .state-bubble .label {
   font-size: 8px;
   opacity: 0.7;
@@ -501,7 +529,6 @@ path.mun-path {
   }
 }
 
-/* Iconos Transparentes */
 .c-icon,
 .p-icon,
 .c-icon-state {
@@ -512,7 +539,7 @@ path.mun-path {
   justify-content: center;
 }
 
-/* Puntos Individuales */
+/* Puntos individuales */
 .p-dot {
   width: 10px;
   height: 10px;
@@ -522,19 +549,10 @@ path.mun-path {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
   display: block;
 }
-
 .p-dot:hover {
   cursor: pointer;
   background: #177da6;
   transform: scale(1.2);
   transition: all 0.2s ease;
-}
-
-.c-bubble:hover:not(.state-bubble) {
-  cursor: pointer;
-  background: #177da6;
-  transform: scale(1.15);
-  box-shadow: 0 6px 20px rgba(23, 125, 166, 0.6);
-  z-index: 1000;
 }
 </style>

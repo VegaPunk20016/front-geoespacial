@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import padronService from '../services/padronService'
+import { get, set, del, clear } from 'idb-keyval'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CACHE DE BOUNDS — evita re-pedir el mismo área en 5 minutos
@@ -10,10 +11,13 @@ let _mapAbortController = null
 
 const buildCacheKey = (modo, id, filtros) => {
   const f = normalizarBounds(filtros)
-  const p = 2
+  const p = 4 // Precisión aumentada a 4 decimales para caché quirúrgico
   const r = (n) => (n != null ? Math.round(Number(n) * 10 ** p) / 10 ** p : 'x')
+
   const mun = filtros?.municipio ? `_${filtros.municipio}` : ''
-  return `${modo}_${id}_${r(f.min_lat)}_${r(f.max_lat)}_${r(f.min_lng)}_${r(f.max_lng)}${mun}`
+  const zoom = filtros?.zoom ? `_z${filtros.zoom}` : '' // Incluimos el zoom
+
+  return `${modo}_${id}_${r(f.min_lat)}_${r(f.max_lat)}_${r(f.min_lng)}_${r(f.max_lng)}${zoom}${mun}`
 }
 
 const getCache = (key) => {
@@ -89,8 +93,8 @@ export const usePadronStore = defineStore('padron', {
     mapLoading: false,
     actionStatus: 'idle',
     errorMessage: null,
-
     _mapRequestId: 0,
+    loadingResumen: false,
   }),
 
   actions: {
@@ -130,52 +134,56 @@ export const usePadronStore = defineStore('padron', {
     async fetchMapaDatos(id, coords, modo) {
       const filtros = normalizarBounds(coords)
       const cacheKey = buildCacheKey(modo, id, filtros)
-      const cachedData = getCache(cacheKey)
 
-      if (cachedData) {
-        if (modo === 'puntos') {
-          this.beneficiarios = cachedData
-          this.clusters = []
-        } else {
-          this.clusters = cachedData
-          this.beneficiarios = []
-        }
+      // 1. Intentar Memoria primero (Ultra rápido)
+      let data = getCache(cacheKey)
+
+      // 2. Intentar Disco si no hay en memoria (Persistente)
+      if (!data) {
+        data = await get(cacheKey)
+        if (data) setCache(cacheKey, data) // Subir a memoria para la próxima vez
+      }
+
+      if (data) {
+        this._aplicarDatosMapa(data, modo)
         return
       }
 
+      // 3. Si no hay nada, vamos al API
       if (this._mapAbortController) this._mapAbortController.abort()
       this._mapAbortController = new AbortController()
-      const signal = this._mapAbortController.signal
       const requestId = ++this._mapRequestId
-
       this.mapLoading = true
 
       try {
-        let data
-        if (modo === 'puntos') {
-          const res = await padronService.getBeneficiarios(id, filtros, signal)
-          data = res.data.data || []
-        } else {
-          const res = await padronService.getClusters(id, filtros, signal)
-          data = res.data.data || []
-        }
+        const fetchFn =
+          modo === 'puntos' ? padronService.getBeneficiarios : padronService.getClusters
+        const res = await fetchFn(id, filtros, this._mapAbortController.signal)
+        const freshData = res.data.data || []
 
         if (requestId !== this._mapRequestId) return
 
-        setCache(cacheKey, data)
+        // Guardar en ambos niveles de caché
+        setCache(cacheKey, freshData)
+        await set(cacheKey, freshData)
 
-        if (modo === 'puntos') {
-          this.beneficiarios = data
-          this.clusters = []
-        } else {
-          this.clusters = data
-          this.beneficiarios = []
-        }
+        this._aplicarDatosMapa(freshData, modo)
       } catch (err) {
-        if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return
+        if (err.name === 'CanceledError') return
         console.error('Error cargando mapa:', err)
       } finally {
         if (requestId === this._mapRequestId) this.mapLoading = false
+      }
+    },
+
+    // Función auxiliar al mismo nivel de las demás actions
+    _aplicarDatosMapa(data, modo) {
+      if (modo === 'puntos') {
+        this.beneficiarios = data
+        this.clusters = []
+      } else {
+        this.clusters = data
+        this.beneficiarios = []
       }
     },
 
@@ -274,17 +282,21 @@ export const usePadronStore = defineStore('padron', {
 
     // Búsqueda inteligente: detecta CP (5 dígitos) o texto
     async buscarInteligente(id, query) {
-      if (!query || query.length < 2) return []
+      if (!query || query.length < 3) return []
+
+      const searchKey = `search_${id}_${query}`
+      const cached = getCache(searchKey)
+      if (cached) return cached
+
       try {
-        if (/^\d{5}$/.test(query)) {
-          const res = await padronService.buscarPorCP(id, query)
-          return res.data.data
-        }
-        const res = await padronService.buscar(id, query)
-        return res.data.data
+        const res = /^\d{5}$/.test(query)
+          ? await padronService.buscarPorCP(id, query)
+          : await padronService.buscar(id, query)
+
+        const results = res.data.data || []
+        setCache(searchKey, results) // Cacheamos por 5 min
+        return results
       } catch (err) {
-        if (err.name === 'CanceledError') return []
-        console.error('Error en búsqueda inteligente:', err)
         return []
       }
     },
@@ -305,18 +317,15 @@ export const usePadronStore = defineStore('padron', {
     // =========================================================
 
     async fetchResumenAgnostico(id, municipio = null) {
-      // 1. Encendemos el interruptor de carga
       this.loadingResumen = true
 
       try {
         const res = await padronService.getResumen(id, municipio)
-        // Retornamos la data limpia
         return res.data.data
       } catch (err) {
         console.error('Error al obtener resumen:', err)
         return null
       } finally {
-        // 2. Apagamos el interruptor (Pase lo que pase)
         this.loadingResumen = false
       }
     },
@@ -351,7 +360,6 @@ export const usePadronStore = defineStore('padron', {
           datosGenerales,
         )
 
-        // Actualizar localmente sin recargar toda la lista
         const idx = this.beneficiarios.findIndex((b) => b.id === beneficiarioId)
         if (idx !== -1) {
           this.beneficiarios = [
@@ -426,8 +434,8 @@ export const usePadronStore = defineStore('padron', {
       try {
         const res = await padronService.importCsvMapeado(id, mapeo)
         this.actionStatus = 'success'
-        invalidarCache(id) // Limpiamos la caché del mapa/tabla
-        return res.data // Retornamos los datos para que el componente los use
+        invalidarCache(id)
+        return res.data
       } catch (err) {
         this.errorMessage = err.response?.data?.message || 'Error al importar los datos'
         this.actionStatus = 'error'
@@ -448,6 +456,10 @@ export const usePadronStore = defineStore('padron', {
         this.actionStatus = 'error'
         throw err
       }
+    },
+
+    async invalidarCacheCompleta(id) {
+      invalidarCache(id)
     },
   },
 })
