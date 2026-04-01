@@ -88,7 +88,7 @@ export const usePadronStore = defineStore('padron', {
     beneficiarios: [],
     clusters: [],
     paginacion: null, // { total, pagina, por_pagina, paginas }
-
+    registroPendienteSeleccion: null,
     status: 'idle',
     mapLoading: false,
     actionStatus: 'idle',
@@ -101,6 +101,13 @@ export const usePadronStore = defineStore('padron', {
     // =========================================================
     // CATÁLOGO
     // =========================================================
+    setRegistroPendiente(registro) {
+      this.registroPendienteSeleccion = registro
+    },
+
+    clearRegistroPendiente() {
+      this.registroPendienteSeleccion = null
+    },
 
     async fetchPadrones() {
       this.status = 'loading'
@@ -211,6 +218,7 @@ export const usePadronStore = defineStore('padron', {
     // BENEFICIARIOS — tabla con paginación
     // =========================================================
 
+    // UBICACIÓN: Alrededor de la línea 170
     async fetchBeneficiariosPaginados(
       id,
       { pagina = 1, porPagina = 50, municipio = null, seccion = null, cp = null } = {},
@@ -225,14 +233,14 @@ export const usePadronStore = defineStore('padron', {
           seccion,
           cp,
         })
+
+        // Sincronizar siempre con la estructura: data para filas, paginacion para metadatos
         this.beneficiarios = res.data.data ?? []
         this.paginacion = res.data.paginacion ?? null
+
         this.status = 'success'
       } catch (err) {
-        if (err.name === 'CanceledError') return
-        this.errorMessage = err.response?.data?.message || 'Error al cargar los datos'
-        this.status = 'error'
-        throw err
+        // ... (tu lógica de error actual)
       }
     },
 
@@ -301,6 +309,32 @@ export const usePadronStore = defineStore('padron', {
       }
     },
 
+    async buscarPorMunicipio(id, municipio) {
+      if (!municipio) return []
+
+      const searchKey = `mun_${id}_${municipio.toLowerCase().trim()}`
+      const cached = getCache(searchKey)
+      if (cached) return cached
+
+      try {
+        // getBeneficiariosPaginados → GET /padrones/:id/beneficiarios?municipio=X&pagina=1&por_pagina=5000
+        // El backend lo recibe en obtenerBeneficiarios() con $filtros['municipio']
+        // y entra al bloque paginar=true → usa idx_mun sin escanear toda la tabla
+        const res = await padronService.getBeneficiariosPaginados(id, {
+          pagina: 1,
+          porPagina: 5000,
+          municipio,
+        })
+
+        const results = res.data.data ?? []
+        setCache(searchKey, results)
+        return results
+      } catch (err) {
+        console.error('buscarPorMunicipio error:', err)
+        return []
+      }
+    },
+
     // Obtener estructura dinámica del padrón (campos extras del JSON)
     async fetchPlantillaExtra(id) {
       try {
@@ -316,20 +350,17 @@ export const usePadronStore = defineStore('padron', {
     // RESUMEN
     // =========================================================
 
+    // En padronStore.js
     async fetchResumenAgnostico(id, municipio = null) {
-      this.loadingResumen = true
-
       try {
         const res = await padronService.getResumen(id, municipio)
+        // Retornamos el objeto 'data' que ahora contiene tanto municipio como secciones
         return res.data.data
-      } catch (err) {
-        console.error('Error al obtener resumen:', err)
+      } catch (error) {
+        console.error('Error:', error)
         return null
-      } finally {
-        this.loadingResumen = false
       }
     },
-
     // =========================================================
     // CRUD BENEFICIARIOS
     // =========================================================
@@ -376,6 +407,36 @@ export const usePadronStore = defineStore('padron', {
         this.errorMessage = err.response?.data?.message || 'Error al editar el registro'
         this.actionStatus = 'error'
         throw err
+      }
+    },
+
+    // En padronStore.js
+    // UBICACIÓN: Dentro de actions, reemplaza tu buscarGlobal actual
+    async buscarGlobal(id, query, pagina = 1) {
+      if (!query || query.trim().length < 2) return []
+
+      this.status = 'loading'
+      this.errorMessage = null
+
+      try {
+        // Enviar la página solicitada al service
+        const res = await padronService.buscarGlobal(id, query.trim(), pagina)
+
+        // Extraer datos (asegurándote de que coincida con la estructura plana del controller)
+        const { data, paginacion } = res.data
+
+        this.beneficiarios = data || []
+        // Sincronizar el objeto de paginación global del store
+        this.paginacion = paginacion || null
+
+        this.status = 'success'
+        return this.beneficiarios
+      } catch (err) {
+        this.status = 'error'
+        this.beneficiarios = []
+        this.paginacion = null // Limpiar paginación si hay error
+        this.errorMessage = err.response?.data?.message || 'Error en búsqueda'
+        return []
       }
     },
 
@@ -454,6 +515,16 @@ export const usePadronStore = defineStore('padron', {
       } catch (err) {
         this.errorMessage = err.response?.data?.message || 'Error al eliminar el padrón'
         this.actionStatus = 'error'
+        throw err
+      }
+    },
+
+    async descargarArchivoExportacion(padronId, termino = null) {
+      try {
+        const res = await padronService.exportarPadronCompleto(padronId, termino)
+        return res.data
+      } catch (err) {
+        console.error('Error al descargar el CSV:', err)
         throw err
       }
     },

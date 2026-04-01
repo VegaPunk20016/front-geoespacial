@@ -1,21 +1,45 @@
 <template>
-  <div ref="mapContainer" class="w-full h-full bg-[#f8fafc] outline-none"></div>
-</template>
+  <div class="w-full h-full relative">
+    <div ref="mapContainer" class="w-full h-full bg-[#f8fafc] outline-none"></div>
 
+    <div class="absolute bottom-24 right-4 z-[1000] flex flex-col gap-2">
+      <button
+        @click="zoomIn"
+        class="w-10 h-10 bg-white rounded-xl shadow-lg flex items-center justify-center text-gray-600 hover:text-[#177DA6] transition-all hover:shadow-xl border border-gray-100 active:scale-90"
+        title="Aumentar zoom"
+      >
+        <Plus :size="20" />
+      </button>
+      <button
+        @click="zoomOut"
+        class="w-10 h-10 bg-white rounded-xl shadow-lg flex items-center justify-center text-gray-600 hover:text-[#177DA6] transition-all hover:shadow-xl border border-gray-100 active:scale-90"
+        title="Disminuir zoom"
+      >
+        <Minus :size="20" />
+      </button>
+    </div>
+  </div>
+</template>
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, markRaw, nextTick } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import 'leaflet.markercluster'
+import { Plus, Minus } from 'lucide-vue-next'
 
+// Datos geográficos y constantes
 import dataMun from '@/data/edomex_municipios.json'
 import dataEnt from '@/data/edomex_estado.json'
+import seccionesUrl from '@/data/secciones_mexico_leaflet.geojson?url'
 import { ZOOM_MUNICIPIO, ZOOM_PUNTO } from '@/utils/mapConstants'
+import { useMunicipios } from '@/composables/useMunicipios'
+
+const { normalizar } = useMunicipios()
 
 // ── 1. Props y Emits ───────────────────────────────────────────────────────
 const props = defineProps({
   registros: { type: Array, default: () => [] },
-  modo: { type: String, default: 'estado' }, // 'estado' | 'clusters' | 'puntos'
+  modo: { type: String, default: 'estado' },
   datosCoropletas: { type: Array, default: () => [] },
   municipioFiltro: { type: String, default: null },
   tieneCoordenadas: { type: Boolean, default: true },
@@ -25,11 +49,12 @@ const emit = defineEmits([
   'select',
   'view-change',
   'municipio-click',
+  'seccion-click', // Nuevo emit para secciones
   'zoom-nivel',
   'cluster-click',
 ])
 
-// ── 2. Estado Interno y Cachés ─────────────────────────────────────────────
+// ── 2. Estado Interno ──────────────────────────────────────────────────────
 const mapContainer = ref(null)
 const state = {
   map: null,
@@ -38,71 +63,132 @@ const state = {
   municipiosLayer: null,
 }
 
-// Mapa de capas por nombre para acceso O(1)
 const _municipioLayerMap = new Map()
-
+const capaSecciones = ref(null)
 let _renderTimer = null
 let _prevRegistros = []
 let _markerMap = new Map()
 let lastMoveEmit = 0
 
-const normalize = (s) => s?.toUpperCase().trim()
+// Tracking de selección
+let _highlightedMarker = null
+let _highlightedId = null
 
-// Caché de iconos de cluster para evitar re-crear objetos
-const iconCache = new Map()
-const getClusterIcon = (count) => {
-  if (iconCache.has(count)) return iconCache.get(count)
-  const icon = L.divIcon({
-    html: `<div class="c-bubble">${count}</div>`,
-    className: 'c-icon',
-    iconSize: [35, 35],
-  })
-  iconCache.set(count, icon)
-  return icon
+// ── 3. Helpers y Lógica de Carga ───────────────────────────────────────────
+
+const cargarGeoJSONSecciones = async () => {
+  try {
+    const response = await fetch(seccionesUrl)
+    return await response.json()
+  } catch (error) {
+    console.error('Error cargando el GeoJSON de secciones:', error)
+    return null
+  }
 }
 
-// Caché de coordenadas para evitar Number() repetido
-const coordsCache = new WeakMap()
-const getCoords = (r) => {
-  if (r._coords) return r._coords
-  if (coordsCache.has(r)) return coordsCache.get(r)
-  const lat = Number(r.lat ?? r.latitud)
-  const lng = Number(r.lng ?? r.longitud)
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
-  const coords = [lat, lng]
-  coordsCache.set(r, coords)
-  return coords
+const normalizarParaMatch = (str) => {
+  if (!str) return ''
+  return str
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+    .trim()
 }
 
-// ── 3. Computadas y Estilos ────────────────────────────────────────────────
+// ── 4. Computadas ────────────────────────────────────────────────────────────
+
 const coropletaMap = computed(() => {
   if (!props.datosCoropletas?.length) return {}
-  return Object.fromEntries(
-    props.datosCoropletas.map((d) => [normalize(d.municipio), parseInt(d.total) || 0]),
-  )
+  return props.datosCoropletas.reduce((acc, d) => {
+    const llave = d.match_key || normalizarParaMatch(d.municipio)
+    if (llave) {
+      acc[llave] = (acc[llave] || 0) + (parseInt(d.total) || 0)
+    }
+    return acc
+  }, {})
 })
 
-const maxTotal = computed(() => Math.max(...Object.values(coropletaMap.value), 1))
+const maxTotal = computed(() => {
+  const valores = Object.values(coropletaMap.value)
+  return valores.length > 0 ? Math.max(...valores) : 1
+})
+
+// ── 5. Lógica de Secciones ───────────────────────────────────────────────────
+
+const limpiarSecciones = () => {
+  if (capaSecciones.value && state.map) {
+    state.map.removeLayer(capaSecciones.value)
+    capaSecciones.value = null
+  }
+}
+
+const dibujarSecciones = async (dataResumen) => {
+  const seccionesGeoJSON = await cargarGeoJSONSecciones()
+  if (!seccionesGeoJSON) return
+
+  limpiarSecciones()
+
+  if (!dataResumen.hay_secciones || !dataResumen.secciones) return
+
+  const seccionesData = dataResumen.secciones
+
+  capaSecciones.value = L.geoJSON(seccionesGeoJSON, {
+    filter: (feature) => {
+      const id = String(feature.properties.seccion)
+      return Object.prototype.hasOwnProperty.call(seccionesData, id)
+    },
+    style: () => ({
+      fillColor: '#177DA6',
+      weight: 1.5,
+      opacity: 1,
+      color: 'white',
+      fillOpacity: 0.5,
+    }),
+    onEachFeature: (feature, layer) => {
+      const numSeccion = String(feature.properties.seccion)
+      const info = seccionesData[numSeccion]
+
+      layer.on({
+        mouseover: (e) => e.target.setStyle({ fillOpacity: 0.8, weight: 3 }),
+        mouseout: (e) => e.target.setStyle({ fillOpacity: 0.5, weight: 1.5 }),
+        click: (e) => {
+          L.DomEvent.stopPropagation(e)
+          emit('seccion-click', {
+            seccion: numSeccion,
+            detalles: info.detalles,
+            meta: info.meta,
+          })
+        },
+      })
+    },
+  }).addTo(state.map)
+
+  const bounds = capaSecciones.value.getBounds()
+  if (bounds.isValid()) {
+    state.map.fitBounds(bounds, { padding: [20, 20] })
+  }
+}
 
 const getMunicipioStyle = (feature) => {
-  const nombre = normalize(feature.properties.nombre)
-  const esSeleccionado = normalize(props.municipioFiltro) === nombre
-  const total = coropletaMap.value[nombre] || 0
+  const nombreGeoLimpio = normalizarParaMatch(feature.properties.nombre)
+  const total = coropletaMap.value[nombreGeoLimpio] || 0
+  const esSeleccionado =
+    props.municipioFiltro && normalizarParaMatch(props.municipioFiltro) === nombreGeoLimpio
 
   if (esSeleccionado) {
-    return { color: '#0f172a', weight: 3, opacity: 1, fillColor: '#177DA6', fillOpacity: 0.55 }
+    return { color: '#0f172a', weight: 3, opacity: 1, fillColor: '#177DA6', fillOpacity: 0.7 }
   }
 
-  // Coropleta: más registros → color más intenso
   if (total > 0) {
     const ratio = Math.min(total / maxTotal.value, 1)
-    const fillOpacity = 0.15 + ratio * 0.55
     return {
       color: '#1e4a6e',
       weight: 0.6,
       opacity: 0.6,
       fillColor: '#177DA6',
-      fillOpacity,
+      fillOpacity: 0.15 + ratio * 0.55,
       className: 'mun-path',
     }
   }
@@ -112,12 +198,48 @@ const getMunicipioStyle = (feature) => {
     weight: 0.6,
     opacity: 0.6,
     fillColor: '#bfdbfe',
-    fillOpacity: 0.25,
+    fillOpacity: 0.2,
     className: 'mun-path',
   }
 }
 
-// ── 4. Inicialización del Mapa ─────────────────────────────────────────────
+// ── 6. Iconos y Marcadores ───────────────────────────────────────────────────
+
+const getClusterIcon = (count) => {
+  return L.divIcon({
+    html: `<div class="c-bubble">${count}</div>`,
+    className: 'c-icon',
+    iconSize: [35, 35],
+  })
+}
+
+const ICON_NORMAL = () =>
+  L.divIcon({
+    className: 'p-icon',
+    html: '<div class="p-dot"></div>',
+    iconSize: [12, 12],
+    iconAnchor: [6, 6],
+  })
+
+const ICON_HIGHLIGHT = () =>
+  L.divIcon({
+    className: 'p-icon',
+    html: '<div class="p-dot p-dot--highlight"></div>',
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
+  })
+
+const getCoords = (r) => {
+  const lat = Number(r.lat ?? r.latitud)
+  const lng = Number(r.lng ?? r.longitud)
+  return Number.isFinite(lat) && Number.isFinite(lng) ? [lat, lng] : null
+}
+
+const zoomIn = () => state.map?.zoomIn()
+const zoomOut = () => state.map?.zoomOut()
+
+// ── 7. Inicialización del Mapa ──────────────────────────────────────────────
+
 const initMap = () => {
   if (state.map) return
 
@@ -129,13 +251,16 @@ const initMap = () => {
       zoom: 9,
       minZoom: 8,
       maxZoom: 22,
-      scrollWheelZoom: false,
-      doubleClickZoom: false,
+      scrollWheelZoom: true, // Habilitamos el scroll
+      wheelDebounceTime: 150, // Evita saltos bruscos
+      wheelPxPerZoomLevel: 120, // Sensibilidad del scroll
+      // ──────────────────
+      doubleClickZoom: true,
     }),
   )
 
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; INEGI',
+    attribution: '&copy; CARTO',
     maxZoom: 22,
     maxNativeZoom: 19,
   }).addTo(state.map)
@@ -144,47 +269,36 @@ const initMap = () => {
     L.markerClusterGroup({
       showCoverageOnHover: false,
       spiderfyOnMaxZoom: true,
-      zoomToBoundsOnClick: true,
-      maxClusterRadius: (zoom) => {
-        if (zoom >= 19) return 10
-        if (zoom >= 15) return 30
-        return 50
-      },
-      spiderlegPolylineOptions: { weight: 1.5, color: '#177da6', opacity: 0.6 },
-      chunkedLoading: true,
+      maxClusterRadius: (zoom) => (zoom >= 15 ? 30 : 50),
       iconCreateFunction: (c) => getClusterIcon(c.getChildCount()),
     }),
   ).addTo(state.map)
 
   state.pointsLayer = markRaw(L.layerGroup()).addTo(state.map)
 
-  // Borde del estado (no interactivo)
-  L.geoJSON(dataEnt, {
-    style: { color: '#1e293b', weight: 2, fillOpacity: 0, interactive: false },
-  }).addTo(state.map)
-
-  // Capa de municipios con tooltips y eventos
   state.municipiosLayer = markRaw(
     L.geoJSON(dataMun, {
       style: getMunicipioStyle,
       onEachFeature: (feature, layer) => {
         const nombre = feature.properties.nombre
+        const nombreLimpio = normalizarParaMatch(nombre)
+        _municipioLayerMap.set(nombreLimpio, layer)
 
-        // Registrar en mapa de acceso rápido para zoomToMunicipio
-        _municipioLayerMap.set(normalize(nombre), layer)
-
-        layer.bindTooltip('', { className: 'map-tooltip', sticky: true, direction: 'top' })
+        layer.bindTooltip('', { className: 'map-tooltip', sticky: true })
 
         layer.on({
-          // Dejamos el hover intacto
           mouseover: () => {
-            const total = coropletaMap.value[normalize(nombre)] || 0
+            const total = coropletaMap.value[nombreLimpio] || 0
             layer.setTooltipContent(`
               <div class="font-bold text-xs">${nombre}</div>
               <div class="text-[10px] opacity-80">${total.toLocaleString()} registros</div>
             `)
           },
-          // ELIMINAMOS EL EVENTO CLICK AQUÍ
+          click: (e) => {
+            L.DomEvent.stopPropagation(e)
+            emit('municipio-click', { nombre: nombre })
+            state.map.flyToBounds(layer.getBounds(), { padding: [30, 30], duration: 1 })
+          },
         })
       },
     }),
@@ -193,16 +307,38 @@ const initMap = () => {
   state.map.on('moveend', handleMoveEnd)
 }
 
-// ── 5. Eventos del Mapa ────────────────────────────────────────────────────
-const handleMoveEnd = () => {
-  const now = Date.now()
-  if (now - lastMoveEmit < 200) return
-  lastMoveEmit = now
+// ── 8. API Pública (defineExpose) ───────────────────────────────────────────
 
+defineExpose({
+  dibujarSecciones,
+  limpiarSecciones,
+  zoomToMunicipio: (nombre) => {
+    const layer = _municipioLayerMap.get(normalizarParaMatch(nombre))
+    if (layer) state.map.flyToBounds(layer.getBounds(), { padding: [30, 30] })
+  },
+  flyToRegistro: (lat, lng, zoom = 15) => {
+    state.map?.flyTo([lat, lng], zoom)
+  },
+  resetView: () => {
+    state.map?.flyTo([19.35, -99.63], 9)
+  },
+  highlightRegistro: (id) => {
+    if (_highlightedMarker) _highlightedMarker.setIcon(ICON_NORMAL())
+    const m = _markerMap.get(id)
+    if (m) {
+      m.setIcon(ICON_HIGHLIGHT())
+      _highlightedMarker = m
+      _highlightedId = id
+    }
+  },
+})
+
+// ── 9. Renderizado y Watchers ───────────────────────────────────────────────
+
+const handleMoveEnd = () => {
   const b = state.map.getBounds().pad(0.2)
   const zoom = state.map.getZoom()
   const nivel = zoom >= ZOOM_PUNTO ? 'punto' : zoom >= ZOOM_MUNICIPIO ? 'municipio' : 'estado'
-
   emit('zoom-nivel', nivel)
   emit('view-change', {
     bounds: [
@@ -214,236 +350,87 @@ const handleMoveEnd = () => {
   })
 }
 
-// ── 6. Renderizado de Markers ──────────────────────────────────────────────
-const renderThrottled = () => {
-  clearTimeout(_renderTimer)
-  _renderTimer = setTimeout(renderMarkers, 150)
-}
-
 const renderMarkers = () => {
   if (!state.map) return
+  _clearAll()
 
   if (props.modo === 'estado') {
-    _renderSuperClusterEstado()
-    return
+    const totalGeneral = props.datosCoropletas.reduce((a, b) => a + (parseInt(b.total) || 0), 0)
+    if (totalGeneral === 0) return
+    const icon = L.divIcon({
+      html: `<div class="c-bubble state-bubble"><span class="count">${totalGeneral.toLocaleString()}</span></div>`,
+      className: 'c-icon-state',
+      iconSize: [120, 120],
+    })
+    L.marker([19.35, -99.63], { icon, interactive: false }).addTo(state.pointsLayer)
+  } else {
+    _renderElementosMapa()
   }
-
-  if (props.modo === 'clusters') _renderClusters()
-  else if (props.modo === 'puntos') _renderPuntosDiff()
 }
 
-const _renderSuperClusterEstado = () => {
-  _clearAll()
-  const totalGeneral = props.datosCoropletas.reduce((a, b) => a + (parseInt(b.total) || 0), 0)
-  if (totalGeneral === 0) return
-
-  const icon = L.divIcon({
-    html: `
-      <div class="c-bubble state-bubble">
-        <span class="label">TOTAL PADRÓN</span>
-        <span class="count">${totalGeneral.toLocaleString()}</span>
-        <span class="instruction">Selecciona un municipio</span>
-      </div>`,
-    className: 'c-icon-state',
-    iconSize: [120, 120],
-  })
-
-  L.marker([19.35, -99.63], { icon, interactive: false }).addTo(state.pointsLayer)
+const _renderElementosMapa = () => {
+  const markers = []
+  for (let r of props.registros) {
+    const coords = getCoords(r)
+    if (!coords) continue
+    if (r.count && props.modo === 'clusters') {
+      const m = L.marker(coords, { icon: getClusterIcon(r.count) })
+      m.on('click', () => {
+        emit('cluster-click', r)
+        state.map.flyTo(coords, ZOOM_PUNTO)
+      })
+      m.addTo(state.pointsLayer)
+    } else {
+      const esDestacado = r.id === _highlightedId
+      const m = L.marker(coords, {
+        icon: esDestacado ? ICON_HIGHLIGHT() : ICON_NORMAL(),
+        zIndexOffset: esDestacado ? 1000 : 0,
+      })
+      m.on('click', () => _selectMarker(r, m))
+      _markerMap.set(r.id, m)
+      markers.push(m)
+    }
+  }
+  if (markers.length) state.clusterLayer.addLayers(markers)
 }
 
 const _clearAll = () => {
   state.clusterLayer.clearLayers()
   state.pointsLayer.clearLayers()
-  _prevRegistros = []
   _markerMap.clear()
 }
 
-const _renderClusters = () => {
-  state.pointsLayer.clearLayers()
-  state.clusterLayer.clearLayers()
-
-  const markersParaAgrupar = []
-
-  for (let i = 0; i < props.registros.length; i++) {
-    const r = props.registros[i]
-    const coords = getCoords(r)
-    if (!coords) continue
-
-    // 1. Si el backend YA mandó el cluster armado (ej. count = 50)
-    if (r.count && parseInt(r.count) > 1) {
-      const marker = L.marker(coords, { icon: getClusterIcon(r.count) })
-
-      marker.on('click', () => {
-        emit('cluster-click', r)
-        state.map.flyTo(coords, ZOOM_PUNTO, { duration: 1.0 })
-      })
-
-      marker.addTo(state.pointsLayer) // Se pinta directo porque ya viene agrupado
-    }
-    // 2. Si el backend mandó un registro individual (count = 1 o vacío)
-    else {
-      const marker = L.marker(coords, {
-        icon: L.divIcon({
-          className: 'p-icon',
-          html: '<div class="p-dot"></div>',
-          iconSize: [12, 12],
-          iconAnchor: [6, 6],
-        }),
-      })
-
-      marker.on('click', () => emit('select', r))
-      markersParaAgrupar.push(marker)
-    }
-  }
-
-  // 3. ¡LA MAGIA OCURRE AQUÍ! Le damos todos los puntos sueltos al
-  // plugin de Leaflet para que él haga los cálculos y pinte los globos grandes.
-  if (markersParaAgrupar.length > 0) {
-    state.clusterLayer.addLayers(markersParaAgrupar)
-  }
+const _selectMarker = (r, marker) => {
+  if (_highlightedMarker) _highlightedMarker.setIcon(ICON_NORMAL())
+  marker.setIcon(ICON_HIGHLIGHT())
+  _highlightedMarker = marker
+  _highlightedId = r.id
+  emit('select', r)
 }
 
-const _renderPuntosDiff = () => {
-  state.pointsLayer.clearLayers()
-
-  const nuevos = props.registros
-  const prevMap = new Map(_prevRegistros.map((r) => [r.id, r]))
-  const newMap = new Map(nuevos.map((r) => [r.id, r]))
-
-  let cambios = 0
-  for (const id of newMap.keys()) {
-    if (!prevMap.has(id)) cambios++
-  }
-  for (const id of prevMap.keys()) {
-    if (!newMap.has(id)) cambios++
-  }
-
-  // Si más del 50% cambió → render completo
-  if (cambios > nuevos.length * 0.5) {
-    state.clusterLayer.clearLayers()
-    _markerMap.clear()
-    const markers = _crearMarkers(nuevos)
-    if (markers.length) state.clusterLayer.addLayers(markers)
-    _prevRegistros = nuevos
-    return
-  }
-
-  // Render diferencial: solo añade/quita lo necesario
-  for (const [id] of prevMap) {
-    if (!newMap.has(id)) {
-      const m = _markerMap.get(id)
-      if (m) {
-        state.clusterLayer.removeLayer(m)
-        _markerMap.delete(id)
-      }
-    }
-  }
-
-  const toAdd = []
-  for (const [id, r] of newMap) {
-    if (!prevMap.has(id)) toAdd.push(r)
-  }
-
-  const markers = _crearMarkers(toAdd)
-  if (markers.length) state.clusterLayer.addLayers(markers)
-  _prevRegistros = nuevos
-}
-
-const _crearMarkers = (registros) => {
-  const markers = []
-  for (let i = 0; i < registros.length; i++) {
-    const r = registros[i]
-    const coords = getCoords(r)
-    if (!coords) continue
-
-    const m = L.marker(coords, {
-      icon: L.divIcon({
-        className: 'p-icon',
-        html: '<div class="p-dot"></div>',
-        iconSize: [12, 12],
-        iconAnchor: [6, 6],
-      }),
-    }).on('click', () => emit('select', r))
-
-    _markerMap.set(r.id, m)
-    markers.push(m)
-  }
-  return markers
-}
-
-const aplicarRestriccionesMovimiento = () => {
-  if (!state.map) return
-
-  // Paneo y zoom libre siempre, sin importar el modo
-  state.map.dragging.enable()
-  state.map.scrollWheelZoom.enable()
-  state.map.doubleClickZoom.enable()
-
-  // Quitamos la restricción de bordes cerrados
-  state.map.setMaxBounds(null)
-
-  // Límites generales para no alejarse más allá del estado ni acercarse demasiado
-  state.map.setMinZoom(8)
-  state.map.setMaxZoom(22)
-}
-
-// ── 8. API Expuesta al Padre ───────────────────────────────────────────────
-defineExpose({
-  /**
-   * Vuela con animación suave al bounding box del municipio seleccionado.
-   * Usa el Map de capas construido en onEachFeature para acceso O(1).
-   */
-  zoomToMunicipio: (nombre) => {
-    const layer = _municipioLayerMap.get(normalize(nombre))
-    if (!layer || !state.map) return
-    state.map.flyToBounds(layer.getBounds(), { padding: [30, 30], duration: 1.0, maxZoom: 13 })
+watch(
+  () => props.registros,
+  () => {
+    clearTimeout(_renderTimer)
+    _renderTimer = setTimeout(renderMarkers, 150)
   },
-
-  /**
-   * Vuela a las coordenadas de un registro específico (útil para resultados de búsqueda).
-   */
-  flyToRegistro: (lat, lng, zoom = 15) => {
-    if (!state.map) return
-    state.map.flyTo([lat, lng], zoom, { duration: 1.0 })
-  },
-
-  resetView: () => {
-    if (!state.map) return
-    state.map.scrollWheelZoom.disable()
-    state.map.dragging.enable()
-    state.map.setMaxBounds(null)
-    state.map.setMinZoom(8)
-    state.map.setMaxZoom(18)
-    state.map.flyTo([19.35, -99.63], 9, { duration: 1.2 })
-  },
-})
-
-// ── 9. Watchers y Ciclo de Vida ────────────────────────────────────────────
-watch(() => props.registros, renderThrottled, { deep: false })
+  { deep: false },
+)
 
 watch([() => props.datosCoropletas, () => props.municipioFiltro], () => {
   state.municipiosLayer?.setStyle(getMunicipioStyle)
 })
 
-watch(
-  () => props.modo,
-  () => {
-    aplicarRestriccionesMovimiento()
-    renderMarkers()
-  },
-)
+watch(() => props.modo, renderMarkers)
 
 onMounted(async () => {
   await nextTick()
   initMap()
-  aplicarRestriccionesMovimiento()
   renderMarkers()
 })
 
 onUnmounted(() => {
   clearTimeout(_renderTimer)
-  _markerMap.clear()
-  _municipioLayerMap.clear()
   state.map?.remove()
 })
 </script>
@@ -467,7 +454,6 @@ path.mun-path {
   border-top-color: #0f172a !important;
 }
 
-/* Cluster */
 .c-bubble {
   width: 35px;
   height: 35px;
@@ -488,10 +474,8 @@ path.mun-path {
   background: #177da6;
   transform: scale(1.15);
   box-shadow: 0 6px 20px rgba(23, 125, 166, 0.6);
-  z-index: 1000;
 }
 
-/* Burbuja estado */
 .state-bubble {
   width: 120px !important;
   height: 120px !important;
@@ -539,7 +523,7 @@ path.mun-path {
   justify-content: center;
 }
 
-/* Puntos individuales */
+/* Punto normal */
 .p-dot {
   width: 10px;
   height: 10px;
@@ -548,11 +532,40 @@ path.mun-path {
   border-radius: 50%;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
   display: block;
+  transition: all 0.15s ease;
 }
 .p-dot:hover {
   cursor: pointer;
   background: #177da6;
-  transform: scale(1.2);
-  transition: all 0.2s ease;
+  transform: scale(1.3);
+}
+
+/* Punto seleccionado — azul con pulso */
+.p-dot--highlight {
+  width: 16px;
+  height: 16px;
+  background: #177da6;
+  border: 2.5px solid white;
+  border-radius: 50%;
+  display: block;
+  animation: pulse-point 1.6s ease-out infinite;
+}
+
+@keyframes pulse-point {
+  0% {
+    box-shadow:
+      0 0 0 0 rgba(23, 125, 166, 0.7),
+      0 3px 8px rgba(0, 0, 0, 0.35);
+  }
+  60% {
+    box-shadow:
+      0 0 0 10px rgba(23, 125, 166, 0),
+      0 3px 8px rgba(0, 0, 0, 0.35);
+  }
+  100% {
+    box-shadow:
+      0 0 0 0 rgba(23, 125, 166, 0),
+      0 3px 8px rgba(0, 0, 0, 0.35);
+  }
 }
 </style>

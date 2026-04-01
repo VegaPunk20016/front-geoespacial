@@ -70,6 +70,12 @@ export default {
     return api.get(`/padrones/${id}/buscar`, { params: { q } })
   },
 
+  buscarGlobal(id, q, pagina = 1, porPagina = 100) {
+    return api.get(`/padrones/${id}/buscar-global`, {
+      params: { q, pagina, por_pagina: porPagina },
+    })
+  },
+
   buscarPorCP(id, cp) {
     return api.get(`/padrones/${id}/buscar-cp/${cp}`)
   },
@@ -81,6 +87,14 @@ export default {
 
   getPlantilla(id) {
     return api.get(`/padrones/${id}/plantilla`)
+  },
+
+  exportarPadronCompleto(id, termino = null) {
+    return api.get(`/padrones/${id}/exportar`, {
+      params: termino ? { q: termino } : {}, // ← enviar q si hay búsqueda
+      responseType: 'blob',
+      timeout: 120000,
+    })
   },
 
   create(data) {

@@ -9,6 +9,7 @@ import {
   ArrowRight,
   ChevronLeft,
   Info,
+  ChevronDown,
 } from 'lucide-vue-next'
 import api from '@/services/api'
 import { usePadronStore } from '@/stores/padronStore'
@@ -51,6 +52,30 @@ const CAMPOS_FIJOS = new Set([
   'latitud',
   'longitud',
 ])
+
+const dropdownAbierto = ref(null)
+
+const CAMPOS_FIJOS_OPCIONES = [
+  { id: 'clave_unica', label: 'Clave única' },
+  { id: 'nombre_completo', label: 'Nombre completo' },
+  { id: 'municipio', label: 'Municipio' },
+  { id: 'codigo_postal', label: 'Código Postal' },
+  { id: 'seccion', label: 'Sección' },
+  { id: 'latitud', label: 'Latitud' },
+  { id: 'longitud', label: 'Longitud' },
+]
+
+const opcionesParaColumna = (indexActual) => {
+  return CAMPOS_FIJOS_OPCIONES.filter((opcion) => {
+    return !headersEditables.value.some((header, i) => i !== indexActual && header === opcion.id)
+  })
+}
+
+onMounted(() => {
+  document.addEventListener('click', () => {
+    dropdownAbierto.value = null
+  })
+})
 
 const REGLAS_MAPEO = {
   clave_unica: /^(clee|curp|rfc|folio|clave|id$|matricula|expediente)/i,
@@ -464,19 +489,78 @@ const cerrar = () => {
                       >
                         {{ preview.headers[i] }}
                       </p>
-                      <input
-                        v-model="headersEditables[i]"
-                        class="w-full text-[11px] font-semibold px-2 py-1 rounded-md border outline-none transition-all"
-                        :style="
-                          erroresMapeo.has(headersEditables[i])
-                            ? 'border-color: #ef4444; background: #fef2f2; color: #b91c1c'
-                            : headersEditables[i] !== preview.headers[i]
-                              ? 'border-color: var(--color-primary); background: #f0f9ff; color: var(--color-dark)'
-                              : 'border-color: var(--color-base-dark); background: var(--color-base); color: var(--color-ink)'
-                        "
-                        @dblclick="$event.target.select()"
-                        :placeholder="preview.headers[i]"
-                      />
+                      <!-- Reemplaza tu input con esto -->
+                      <div class="relative w-full" @click.stop>
+                        <!-- Input donde el usuario puede escribir -->
+                        <input
+                          v-model="headersEditables[i]"
+                          @focus="dropdownAbierto = i"
+                          @click="dropdownAbierto = i"
+                          class="w-full text-[11px] font-semibold px-2 py-1.5 rounded-md border outline-none transition-all pr-6"
+                          :style="
+                            erroresMapeo.has(headersEditables[i])
+                              ? 'border-color: #ef4444; background: #fef2f2; color: #b91c1c'
+                              : CAMPOS_FIJOS.has(headersEditables[i])
+                                ? 'border-color: var(--color-primary); background: #f0f9ff; color: var(--color-dark)'
+                                : 'border-color: var(--color-base-dark); background: var(--color-base); color: var(--color-ink)'
+                          "
+                          :placeholder="preview.headers[i]"
+                        />
+
+                        <!-- Icono de flecha para indicar que es un dropdown -->
+                        <button
+                          @click.prevent="dropdownAbierto = dropdownAbierto === i ? null : i"
+                          class="absolute right-1 top-1/2 -translate-y-1/2 p-1 opacity-50 hover:opacity-100 transition-opacity"
+                        >
+                          <ChevronDown :size="12" />
+                        </button>
+
+                        <!-- Menú flotante (Dropdown real) -->
+                        <div
+                          v-if="dropdownAbierto === i"
+                          class="absolute z-50 top-full left-0 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-xl overflow-hidden"
+                        >
+                          <div
+                            class="px-2 py-1.5 text-[9px] font-black text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-gray-100"
+                          >
+                            Opciones disponibles
+                          </div>
+
+                          <div class="max-h-40 overflow-y-auto">
+                            <!-- Opciones dinámicas (solo las que no se han usado) -->
+                            <button
+                              v-for="campo in opcionesParaColumna(i)"
+                              :key="campo.id"
+                              @click.prevent="
+                                ((headersEditables[i] = campo.id), (dropdownAbierto = null))
+                              "
+                              class="w-full text-left px-3 py-2 text-[11px] font-medium hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                            >
+                              {{ campo.label }}
+                            </button>
+
+                            <div
+                              v-if="opcionesParaColumna(i).length === 0"
+                              class="px-3 py-2 text-[10px] text-gray-400 italic"
+                            >
+                              No hay más campos fijos libres
+                            </div>
+                          </div>
+
+                          <!-- Opción para restaurar el nombre original -->
+                          <div class="border-t border-gray-100">
+                            <button
+                              @click.prevent="
+                                ((headersEditables[i] = preview.headers[i]),
+                                (dropdownAbierto = null))
+                              "
+                              class="w-full text-left px-3 py-2 text-[10px] text-gray-500 hover:bg-gray-50 transition-colors"
+                            >
+                              Restaurar: <span class="font-bold">{{ preview.headers[i] }}</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </th>
                 </tr>

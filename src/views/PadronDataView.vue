@@ -2,7 +2,7 @@
   <div class="h-screen flex flex-col overflow-hidden" style="background: var(--color-base)">
     <!-- HEADER -->
     <header
-      class="shrink-0 z-10 px-6 py-4 flex items-center justify-between border-b"
+      class="shrink-0 z-40 px-6 py-4 flex items-center justify-between border-b"
       style="background: white; border-color: var(--color-base-dark)"
     >
       <div class="flex items-center gap-3">
@@ -65,27 +65,71 @@
         >
           <div
             class="w-1.5 h-1.5 rounded-full"
-            :style="{ background: queryBusqueda ? '#f59e0b' : 'var(--color-primary)' }"
+            :style="{ background: queryActiva.length >= 2 ? '#f59e0b' : 'var(--color-primary)' }"
           ></div>
           <span class="text-[11px] font-bold" style="color: var(--color-muted)">
             {{
-              queryBusqueda
-                ? `${beneficiariosFiltrados.length.toLocaleString()} encontrados`
+              queryActiva.length >= 2
+                ? `${paginacion ? paginacion.total.toLocaleString() : beneficiarios.length} encontrados en todo el padrón`
                 : paginacion
                   ? `${paginacion.total.toLocaleString()} registros`
-                  : `${beneficiarios.length.toLocaleString()} registros`
+                  : 'Cargando...'
             }}
           </span>
         </div>
 
-        <button
-          @click="exportarDatosCSV"
-          :disabled="beneficiariosFiltrados.length === 0"
-          class="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border shadow-sm hover:bg-gray-50 active:scale-95 disabled:opacity-50"
-          style="border-color: var(--color-base-dark); color: var(--color-dark)"
-        >
-          <Download :size="14" /> Exportar
-        </button>
+        <!-- CONTENEDOR EXPORTAR -->
+        <div class="relative">
+          <button
+            @click="showExportMenu = !showExportMenu"
+            :disabled="beneficiariosFiltrados.length === 0 || exportandoCSV"
+            class="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border shadow-sm hover:bg-gray-50 active:scale-95 disabled:opacity-50"
+            style="border-color: var(--color-base-dark); color: var(--color-dark)"
+          >
+            <Loader2 v-if="exportandoCSV" class="animate-spin" :size="14" />
+            <Download v-else :size="14" />
+            {{ exportandoCSV ? 'Exportando...' : 'Exportar' }}
+            <ChevronDown :size="12" class="ml-1 opacity-50" />
+          </button>
+
+          <div
+            v-if="showExportMenu"
+            @click="showExportMenu = false"
+            class="fixed inset-0 z-40"
+          ></div>
+
+          <Transition name="fade">
+            <div
+              v-if="showExportMenu"
+              class="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border z-50 overflow-hidden"
+              style="border-color: var(--color-base-dark)"
+            >
+              <button
+                @click="exportarPaginaActual"
+                class="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-gray-50 transition-colors flex items-center gap-2"
+                style="color: var(--color-dark)"
+              >
+                <FileText :size="14" class="text-slate-400" />
+                Exportar Página Actual
+                <span class="ml-auto opacity-50">({{ beneficiariosFiltrados.length }})</span>
+              </button>
+
+              <button
+                @click="exportarTodoElPadron"
+                class="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-gray-50 transition-colors flex items-center gap-2 border-t"
+                style="border-color: var(--color-base); color: var(--color-dark)"
+              >
+                <Database :size="14" class="text-slate-400" />
+                Exportar Todo el Padrón
+                <span class="ml-auto opacity-50">
+                  ({{
+                    paginacion ? paginacion.total.toLocaleString() : beneficiariosFiltrados.length
+                  }})
+                </span>
+              </button>
+            </div>
+          </Transition>
+        </div>
 
         <button
           @click="showCreate = true"
@@ -122,11 +166,10 @@
       </div>
     </div>
 
-    <!-- Controles paginación (solo sin búsqueda activa) -->
+    <!-- Controles paginación -->
     <div
-      v-if="!queryBusqueda"
+      v-if="paginacion && paginacion.paginas > 1"
       class="shrink-0 flex items-center justify-between gap-3 px-5 py-2.5 border-b"
-      style="background: #fdfcfa; border-color: var(--color-base-dark)"
     >
       <div class="flex items-center gap-2">
         <span class="text-[11px]" style="color: var(--color-muted)">Filas por página:</span>
@@ -143,7 +186,6 @@
         </select>
       </div>
 
-      <!-- Navegación rápida -->
       <div v-if="paginacion && paginacion.paginas > 1" class="flex items-center gap-1">
         <button
           @click="cargarPagina(1)"
@@ -340,11 +382,11 @@
                 class="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-3"
                 style="background: var(--color-base)"
               >
-                <Search v-if="queryBusqueda" :size="20" class="text-slate-400" />
+                <Search v-if="queryActiva" :size="20" class="text-slate-400" />
                 <Database v-else :size="20" style="color: var(--color-muted)" />
               </div>
               <p class="text-sm font-semibold" style="color: var(--color-ink)">
-                {{ queryBusqueda ? 'Sin coincidencias' : 'Sin registros' }}
+                {{ queryActiva ? 'Sin coincidencias' : 'Sin registros' }}
               </p>
             </td>
           </tr>
@@ -482,17 +524,33 @@
 
           <!-- Footer municipio -->
           <div
-            v-if="tieneValor(registroSeleccionado.municipio)"
-            class="shrink-0 px-5 py-4 border-t flex items-center gap-2 bg-white"
+            v-if="
+              tieneValor(registroSeleccionado.latitud) ||
+              tieneValor(registroSeleccionado.municipio) ||
+              tieneValor(registroSeleccionado.codigo_postal)
+            "
+            class="shrink-0 p-4 border-t bg-slate-50"
             style="border-color: var(--color-base-dark)"
           >
-            <MapPin :size="14" style="color: var(--color-primary)" />
-            <span
-              class="text-xs font-bold uppercase tracking-wide"
-              style="color: var(--color-muted)"
+            <button
+              @click="irAMapaLocalizado"
+              class="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black uppercase tracking-widest text-white transition-all shadow-md hover:opacity-90 active:scale-95"
+              style="background: var(--color-dark)"
             >
-              {{ registroSeleccionado.municipio }}
-            </span>
+              <MapPin :size="16" class="text-white opacity-80" />
+              Ver en el mapa
+            </button>
+            <p
+              v-if="!tieneValor(registroSeleccionado.latitud)"
+              class="text-[9px] text-center mt-2 text-slate-400 font-semibold uppercase tracking-widest"
+            >
+              Aproximación por
+              {{
+                tieneValor(registroSeleccionado.municipio)
+                  ? `municipio (${registroSeleccionado.municipio})`
+                  : `CP (${registroSeleccionado.codigo_postal})`
+              }}
+            </p>
           </div>
         </div>
       </div>
@@ -543,6 +601,8 @@ import {
   Search,
   Download,
   FileText,
+  Loader2,
+  ChevronDown,
 } from 'lucide-vue-next'
 
 import jsPDF from 'jspdf'
@@ -559,7 +619,8 @@ const padronStore = usePadronStore()
 const { beneficiarios, status, paginacion } = storeToRefs(padronStore)
 
 const registroSeleccionado = ref(null)
-const queryBusqueda = ref('')
+const queryBusqueda = ref('') // Lo que el usuario está escribiendo (reactivo al input)
+const queryActiva = ref('') // FIX: La query que está actualmente en uso por la paginación
 const porPagina = ref(50)
 const showCreate = ref(false)
 const showUpdate = ref(false)
@@ -579,35 +640,17 @@ const nombreDelPadronActual = computed(
   () => padronStore.padrones?.find((p) => p.id === route.params.id)?.nombre_padron ?? 'Cargando...',
 )
 
-// ── Buscador — filtro local en los datos ya cargados ─────────────────────────
-// Cuando hay query activo filtramos localmente (sin ir al backend)
-// Cuando no hay query usamos la paginación del backend
+// ── Beneficiarios filtrados ───────────────────────────────────────────────────
+// Los datos ya vienen filtrados/paginados desde el backend.
+// Solo aplicamos el filtro de vacíos cuando NO hay búsqueda activa.
 const beneficiariosFiltrados = computed(() => {
-  const base = beneficiarios.value.filter(
-    (b) =>
-      b.id !== null &&
-      (tieneValor(b.clave_unica) || tieneValor(b.municipio) || tieneValor(b.seccion)),
-  )
-  if (!queryBusqueda.value.trim()) return base
-
-  const q = queryBusqueda.value.toLowerCase().trim()
-  return base.filter(
-    (b) =>
-      String(b.nombre_completo || '')
-        .toLowerCase()
-        .includes(q) ||
-      String(b.clave_unica || '')
-        .toLowerCase()
-        .includes(q) ||
-      String(b.municipio || '')
-        .toLowerCase()
-        .includes(q) ||
-      String(b.codigo_postal || '')
-        .toLowerCase()
-        .includes(q) ||
-      String(b.seccion || '')
-        .toLowerCase()
-        .includes(q),
+  if (queryActiva.value.length >= 2) {
+    // En modo búsqueda el backend ya filtra; mostramos todo lo que llegó
+    return beneficiarios.value
+  }
+  // En modo normal ocultamos filas sin clave ni nombre
+  return beneficiarios.value.filter(
+    (b) => b.id !== null && (tieneValor(b.clave_unica) || tieneValor(b.nombre_completo)),
   )
 })
 
@@ -625,11 +668,22 @@ const paginasVisibles = computed(() => {
   return items
 })
 
-const cargarPagina = (pagina) => {
-  padronStore.fetchBeneficiariosPaginados(route.params.id, {
-    pagina,
-    porPagina: porPagina.value,
-  })
+// ── FIX PRINCIPAL: cargarPagina usa queryActiva, no queryBusqueda ─────────────
+// Así los botones de paginación no interfieren con el debounce del watcher.
+const cargarPagina = (numPagina) => {
+  const q = queryActiva.value.trim()
+
+  if (q.length >= 2) {
+    // Modo búsqueda: pedimos la página N de los resultados de búsqueda
+    padronStore.buscarGlobal(route.params.id, q, numPagina)
+  } else {
+    // Modo normal: pedimos la página N del listado general
+    padronStore.fetchBeneficiariosPaginados(route.params.id, {
+      pagina: numPagina,
+      porPagina: porPagina.value,
+    })
+  }
+
   document.querySelector('main')?.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
@@ -664,8 +718,12 @@ const atributosDinamicos = computed(() => {
   }
 })
 
+const showExportMenu = ref(false)
+const exportandoCSV = ref(false)
+
 // ── Exportar CSV ──────────────────────────────────────────────────────────────
-const exportarDatosCSV = () => {
+const exportarPaginaActual = () => {
+  showExportMenu.value = false
   const data = beneficiariosFiltrados.value
   if (!data.length) return
 
@@ -714,8 +772,39 @@ const exportarDatosCSV = () => {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = `Padron_${nombreDelPadronActual.value.replace(/\s+/g, '_')}.csv`
+  link.download = `Padron_Pagina_${nombreDelPadronActual.value.replace(/\s+/g, '_')}.csv`
   link.click()
+  URL.revokeObjectURL(url)
+}
+
+const exportarTodoElPadron = async () => {
+  showExportMenu.value = false
+  exportandoCSV.value = true
+
+  try {
+    // Pasar queryActiva si hay búsqueda en curso
+    const blob = await padronStore.descargarArchivoExportacion(
+      route.params.id,
+      queryActiva.value || null, // ← nuevo parámetro
+    )
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    const sufijo = queryActiva.value ? `_busqueda_${queryActiva.value}` : '_Completo'
+    link.setAttribute(
+      'download',
+      `Padron${sufijo}_${nombreDelPadronActual.value.replace(/\s+/g, '_')}.csv`,
+    )
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
+  } catch (error) {
+    console.error('Error al exportar:', error)
+    alert('Ocurrió un error al descargar el archivo.')
+  } finally {
+    exportandoCSV.value = false
+  }
 }
 
 // ── PDF ficha individual ──────────────────────────────────────────────────────
@@ -826,6 +915,31 @@ const generarFichaPDF = async () => {
   doc.save(`Ficha_${nombreLimpio}.pdf`)
 }
 
+// ── Navegación al Mapa ────────────────────────────────────────────────────────
+const irAMapaLocalizado = () => {
+  const r = registroSeleccionado.value
+  if (!r) return
+
+  // Guardar el registro en el store para que el mapa lo abra automáticamente
+  padronStore.setRegistroPendiente(r) // ← nuevo
+
+  const queryParams = {}
+  if (tieneValor(r.latitud) && tieneValor(r.longitud)) {
+    queryParams.lat = r.latitud
+    queryParams.lng = r.longitud
+    queryParams.zoom = 18
+  } else if (tieneValor(r.municipio)) {
+    queryParams.municipio = r.municipio
+  } else if (tieneValor(r.codigo_postal)) {
+    queryParams.cp = r.codigo_postal
+  }
+
+  router.push({
+    path: `/padrones/${route.params.id}/mapa`,
+    query: queryParams,
+  })
+}
+
 // ── Modales ───────────────────────────────────────────────────────────────────
 const abrirEdicion = () => {
   datoAEditar.value = registroSeleccionado.value
@@ -841,6 +955,33 @@ const handleSuccess = () => {
   registroSeleccionado.value = null
   showCreate.value = showUpdate.value = showDelete.value = false
 }
+
+// ── FIX: Watcher separado del mecanismo de paginación ────────────────────────
+// queryBusqueda  → lo que escribe el usuario (con debounce)
+// queryActiva    → la query que ya fue enviada al backend y está en uso
+//
+// cargarPagina() lee queryActiva, así los botones de página pueden navegar
+// dentro de una búsqueda sin que el watcher resetee la página a 1 de nuevo.
+watch(queryBusqueda, (newQuery) => {
+  if (_busquedaTimer) clearTimeout(_busquedaTimer)
+
+  const q = newQuery.trim()
+
+  if (q.length === 0) {
+    // El usuario borró la búsqueda: volver al listado normal
+    queryActiva.value = ''
+    cargarPagina(1)
+    return
+  }
+
+  if (q.length >= 2) {
+    _busquedaTimer = setTimeout(() => {
+      // Confirmar la query activa y empezar desde la pág 1
+      queryActiva.value = q
+      padronStore.buscarGlobal(route.params.id, q, 1)
+    }, 500)
+  }
+})
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 onMounted(async () => {
@@ -867,5 +1008,16 @@ onMounted(async () => {
 ::-webkit-scrollbar-thumb {
   background: var(--color-base-dark);
   border-radius: 99px;
+}
+.fade-enter-active,
+.fade-leave-active {
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+  transform: translateY(-5px);
 }
 </style>

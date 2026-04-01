@@ -23,14 +23,15 @@ import catalogoRaw from '@/data/edomex_municipios_nombres.json'
 // Minúsculas + sin acentos + sin caracteres especiales + espacios colapsados
 // "ACAMBAY DE RUÍZ CASTAÑEDA *" → "acambay de ruiz castaneda"
 // ─────────────────────────────────────────────────────────────────────────────
+// En useMunicipios.js
 const normalizar = (str) => {
   if (!str) return ''
   return str
+    .toString()
+    .normalize('NFD') // Separa acentos: 'ó' -> 'o' + '´'
+    .replace(/[\u0300-\u036f]/g, '') // Elimina los acentos
     .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '') // quitar diacríticos
-    .replace(/[^a-z0-9\s]/g, ' ') // especiales → espacio (incluye * # + etc.)
-    .replace(/\s+/g, ' ')
+    .replace(/[^a-z0-9]/g, '') // 🔥 ELIMINA TODO: espacios, *, /, #, comas, etc.
     .trim()
 }
 

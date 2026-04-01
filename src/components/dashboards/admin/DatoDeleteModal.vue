@@ -1,6 +1,6 @@
 <template>
   <Transition name="modal">
-    <div v-if="show" class="fixed inset-0 z-[120] flex items-center justify-center p-4">
+    <div v-if="show" class="fixed inset-0 z-[9999] flex items-center justify-center p-4">
       <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" @click="$emit('close')"></div>
 
       <div

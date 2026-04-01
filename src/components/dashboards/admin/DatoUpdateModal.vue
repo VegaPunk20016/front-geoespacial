@@ -1,6 +1,6 @@
 <template>
   <Transition name="modal">
-    <div v-if="show" class="fixed inset-0 z-[120] flex items-center justify-center p-4">
+    <div v-if="show" class="fixed inset-0 z-[9999] flex items-center justify-center p-4">
       <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" @click="$emit('close')"></div>
 
       <div
@@ -70,13 +70,27 @@
                 <label class="text-[10px] font-bold text-slate-400 uppercase ml-1"
                   >Código Postal</label
                 >
-                <input
-                  v-model="formFijo.codigo_postal"
-                  type="text"
-                  readonly
-                  placeholder="Autodetectado..."
-                  class="w-full px-4 py-3 rounded-xl border border-slate-100 bg-slate-50 text-sm font-bold text-primary outline-none cursor-default"
-                />
+                <!-- CP es de solo lectura: lo asigna el mapa o la búsqueda en MiniMapa -->
+                <div class="relative">
+                  <input
+                    v-model="formFijo.codigo_postal"
+                    type="text"
+                    readonly
+                    placeholder="Autodetectado desde el mapa..."
+                    class="w-full px-4 py-3 rounded-xl border border-slate-100 bg-slate-50 text-sm font-bold outline-none cursor-default transition-all"
+                    :class="
+                      formFijo.codigo_postal ? 'text-primary border-primary/20' : 'text-slate-400'
+                    "
+                  />
+                  <Transition name="fade">
+                    <span
+                      v-if="formFijo.codigo_postal"
+                      class="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-black text-emerald-500 bg-emerald-50 px-1.5 py-0.5 rounded-md"
+                    >
+                      ✓ detectado
+                    </span>
+                  </Transition>
+                </div>
               </div>
 
               <div class="space-y-1.5">
@@ -154,7 +168,6 @@
                   <Trash2 :size="16" />
                 </button>
               </div>
-
               <div v-if="Object.keys(formExtra).length === 0" class="text-center py-6">
                 <p class="text-xs text-slate-400 italic">No hay atributos adicionales.</p>
               </div>
@@ -172,7 +185,7 @@
           <button
             @click="ejecutarGuardado"
             :disabled="loading"
-            class="px-8 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-slate-200 hover:bg-slate-800 active:scale-95 disabled:opacity-50 transition-all flex items-center gap-2 shadow-lg"
+            class="px-8 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-lg hover:bg-slate-800 active:scale-95 disabled:opacity-50 transition-all flex items-center gap-2"
           >
             <Loader2 v-if="loading" class="animate-spin" :size="14" />
             {{ loading ? 'Guardando...' : 'Guardar Cambios' }}
@@ -209,67 +222,71 @@ const formFijo = ref({
   latitud: null,
   longitud: null,
 })
-
 const formExtra = ref({})
 
-// Lista de municipios para el Dropdown
-const listaMunicipios = computed(() => {
-  return dataMun.features.map((f) => f.properties.nombre).sort((a, b) => a.localeCompare(b))
-})
+const listaMunicipios = computed(() =>
+  dataMun.features.map((f) => f.properties.nombre).sort((a, b) => a.localeCompare(b)),
+)
 
 onMounted(() => {
-  // Inicializar campos fijos
+  // 1. Campos fijos del registro
   formFijo.value = {
     nombre_completo: props.dato.nombre_completo || '',
     municipio: props.dato.municipio || '',
     seccion: props.dato.seccion || '',
-    latitud: props.dato.latitud || null,
-    longitud: props.dato.longitud || null,
-    codigo_postal: '',
+    latitud: props.dato.latitud ? parseFloat(props.dato.latitud) : null,
+    longitud: props.dato.longitud ? parseFloat(props.dato.longitud) : null,
+    // Prioridad: campo propio > CP guardado en JSON
+    codigo_postal: props.dato.codigo_postal || '',
   }
 
-  // Inicializar JSON dinámico y recuperar CP guardado si existe
+  // 2. Campos dinámicos (JSON)
   if (props.dato.datos_generales) {
     try {
       const data =
         typeof props.dato.datos_generales === 'string'
           ? JSON.parse(props.dato.datos_generales)
           : props.dato.datos_generales
-      formExtra.value = { ...data }
 
-      if (data.CP_DETECTADO) formFijo.value.codigo_postal = data.CP_DETECTADO
+      // Excluir CP_DETECTADO del JSON visible — ya está en formFijo.codigo_postal
+      const { CP_DETECTADO, ...resto } = data
+      formExtra.value = { ...resto }
+
+      // Solo usar CP del JSON si el campo propio está vacío
+      if (!formFijo.value.codigo_postal && CP_DETECTADO) {
+        formFijo.value.codigo_postal = CP_DETECTADO
+      }
     } catch (e) {
-      console.error('Error al parsear JSON', e)
+      console.error('Error al parsear datos_generales', e)
       formExtra.value = {}
     }
   }
 })
 
-// REGLA 1: Sincronización inteligente desde el MiniMapa (Pin movido o CP detectado)
+/**
+ * El MiniMapa emite { lat, lng, municipio, cp } cada vez que el usuario
+ * mueve el pin, hace click, busca un CP o usa GPS.
+ * Aquí actualizamos todos los campos derivados de la ubicación.
+ */
 const sincronizarDesdeMapa = (geoData) => {
   formFijo.value.latitud = geoData.lat
   formFijo.value.longitud = geoData.lng
 
-  // Si el mapa detectó un municipio real, lo seleccionamos
   if (geoData.municipio) {
     formFijo.value.municipio = geoData.municipio
   }
-
-  // Si el mapa detectó un CP, lo asignamos
+  // CP siempre se actualiza si viene informado (incluye búsqueda por CP directo)
   if (geoData.cp) {
     formFijo.value.codigo_postal = geoData.cp
   }
 }
 
-// REGLA 2: Sincronización desde Dropdown hacia Mapa (Agnóstico)
-// Al cambiar el municipio en la lista, si no hay coordenadas, sugerimos el centro
+// Si el usuario cambia el municipio en el dropdown → centrar mapa si no hay coords
 watch(
   () => formFijo.value.municipio,
   (nuevoMun) => {
     if (!nuevoMun) return
-
     const munMatch = dataMun.features.find((f) => f.properties.nombre === nuevoMun)
-    // Solo reubicamos si la latitud es nula o la default (agnóstico)
     if (munMatch && (!formFijo.value.latitud || !formFijo.value.longitud)) {
       const layer = L.geoJSON(munMatch)
       const centro = layer.getBounds().getCenter()
@@ -280,24 +297,25 @@ watch(
 )
 
 const agregarCampoNuevo = () => {
-  const nombre = prompt('Nombre del nuevo atributo (ej: TELEFONO, EDAD):')
-  if (nombre) {
-    const key = nombre.toUpperCase().replace(/\s+/g, '_')
-    formExtra.value[key] = ''
-  }
+  const nombre = prompt('Nombre del nuevo atributo:')
+  if (!nombre) return
+  const key = nombre.toUpperCase().replace(/\s+/g, '_')
+  formExtra.value = { ...formExtra.value, [key]: '' }
 }
 
 const eliminarCampoExtra = (key) => {
   if (confirm(`¿Eliminar el atributo "${key}"?`)) {
-    delete formExtra.value[key]
+    const next = { ...formExtra.value }
+    delete next[key]
+    formExtra.value = next
   }
 }
 
 const ejecutarGuardado = async () => {
   loading.value = true
   try {
-    // Persistencia: Guardamos el CP detectado en el JSON de respaldo
     const payloadExtra = { ...formExtra.value }
+    // Persistir CP en el JSON para compatibilidad con registros sin columna codigo_postal
     if (formFijo.value.codigo_postal) {
       payloadExtra.CP_DETECTADO = formFijo.value.codigo_postal
     }
@@ -322,6 +340,14 @@ const ejecutarGuardado = async () => {
 }
 .modal-enter-from,
 .modal-leave-to {
+  opacity: 0;
+}
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s;
+}
+.fade-enter-from,
+.fade-leave-to {
   opacity: 0;
 }
 </style>

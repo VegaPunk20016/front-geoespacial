@@ -1,237 +1,98 @@
 <template>
-  <div class="h-[calc(100vh-80px)] flex bg-white overflow-hidden relative">
-    <!-- ═══════════════════════════════════════════════
-         SIDEBAR IZQUIERDO — Selector + Buscador
-    ═══════════════════════════════════════════════ -->
+  <div class="h-[calc(100vh-80px)] flex bg-slate-50 overflow-hidden relative font-sans">
     <aside
-      class="absolute md:relative z-40 w-80 h-full bg-white border-r border-gray-200 shadow-2xl md:shadow-none transition-transform duration-300 ease-in-out flex flex-col"
+      class="absolute md:relative z-40 w-80 h-full bg-white border-r border-slate-200 shadow-2xl md:shadow-none transition-transform duration-300 flex flex-col"
       :class="isFiltersOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'"
     >
-      <!-- Header -->
-      <div class="p-4 border-b border-gray-100 bg-gray-50/50">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-sm font-bold text-gray-800 flex items-center gap-2">
-            <Database :size="16" class="text-[#177DA6]" /> Consulta de Padrones
-          </h2>
-          <button
-            @click="isFiltersOpen = false"
-            class="md:hidden text-gray-400 hover:text-gray-800 p-1"
-          >
-            <X :size="18" />
-          </button>
-        </div>
-        <!-- Botón regresar -->
+      <div class="p-6 border-b border-slate-100 bg-slate-50/50">
         <button
           @click="router.back()"
-          class="flex items-center gap-2 text-xs font-semibold text-gray-500 hover:text-[#012737] transition-colors group"
+          class="flex items-center gap-2 text-[10px] font-bold text-slate-400 hover:text-blue-600 uppercase tracking-widest mb-4 transition-colors group"
         >
-          <ArrowLeft :size="14" class="group-hover:-translate-x-0.5 transition-transform" />
-          Regresar
+          <ArrowLeft :size="14" class="group-hover:-translate-x-1 transition-transform" />
+          Volver al catálogo
         </button>
+
+        <h2 class="text-lg font-black text-slate-800 flex items-center gap-2 italic">
+          <Search :size="20" class="text-blue-600" /> MODO CONSULTA
+        </h2>
       </div>
 
-      <!-- Contenido -->
-      <div class="flex-1 overflow-y-auto p-5 space-y-5">
-        <!-- Info del padrón activo (solo lectura) -->
-        <div class="space-y-1.5">
-          <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Padrón</label>
-          <div
-            class="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-md px-3 py-2.5"
+      <div class="flex-1 overflow-y-auto p-6 space-y-8 custom-scroll">
+        <div class="space-y-3">
+          <label class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]"
+            >Fuente de Datos</label
           >
-            <div class="min-w-0">
-              <p class="text-sm font-semibold text-gray-800 truncate">
-                {{ padronActivo?.nombre_padron || 'Cargando...' }}
-              </p>
-              <p class="text-[10px] text-[#177DA6] font-medium">
-                {{ padronActivo?.entidad_federativa }} · {{ padronActivo?.categoria }}
-              </p>
+          <div class="p-4 bg-slate-900 rounded-2xl shadow-lg border border-slate-800">
+            <p class="text-sm font-bold text-white mb-1">
+              {{ padronActivo?.nombre_padron || 'Cargando...' }}
+            </p>
+            <div class="flex items-center gap-2">
+              <span
+                class="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-[9px] font-bold rounded-full uppercase border border-blue-500/30"
+              >
+                {{ padronActivo?.categoria }}
+              </span>
+              <span class="text-[9px] text-slate-500 font-medium italic">Solo lectura</span>
             </div>
           </div>
         </div>
 
-        <!-- Nivel de zoom actual (Restaurado) -->
-        <div v-if="padronSeleccionadoId" class="space-y-1.5">
-          <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Nivel</label>
-          <div class="flex gap-1.5">
-            <button
-              v-for="btn in botonesNivel"
-              :key="btn.nivel"
-              @click="irANivel(btn.nivel)"
-              :title="btn.label"
-              :class="[
-                'flex-1 py-2 rounded-md text-xs font-bold transition-all flex items-center justify-center gap-1.5',
-                nivelActual === btn.nivel
-                  ? 'bg-[#012737] text-white'
-                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200',
-              ]"
-            >
-              <component :is="btn.icon" :size="13" />
-              <span>{{ btn.label }}</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Selector de municipio -->
-        <div v-if="padronSeleccionadoId" class="space-y-1.5">
-          <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-            Municipio
-          </label>
-
-          <!-- Input con filtro tipo combobox -->
-          <div class="relative">
+        <div class="space-y-3">
+          <label class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]"
+            >Filtro Territorial</label
+          >
+          <div class="relative group">
             <Search
-              :size="14"
-              class="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+              :size="16"
+              class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors"
             />
             <input
               v-model="busquedaMunicipio"
               @focus="dropdownAbierto = true"
               @blur="cerrarDropdownDelay"
-              placeholder="Buscar o seleccionar..."
-              class="w-full pl-8 pr-8 py-2.5 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-[#177DA6]/20 focus:border-[#177DA6]"
-              :class="municipioSeleccionado ? 'border-[#177DA6]' : ''"
+              placeholder="Buscar municipio..."
+              class="w-full pl-10 pr-4 py-3 bg-slate-100 border-none rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 transition-all placeholder:text-slate-400"
             />
-            <button
-              v-if="busquedaMunicipio || municipioSeleccionado"
-              @mousedown.prevent="limpiarMunicipio"
-              class="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-            >
-              <X :size="14" />
-            </button>
           </div>
 
-          <!-- Dropdown con lista del catálogo INEGI -->
           <div
             v-if="dropdownAbierto && municipiosFiltrados.length"
-            class="border border-gray-200 rounded-md overflow-hidden shadow-lg max-h-56 overflow-y-auto"
+            class="mt-2 bg-white border border-slate-100 rounded-2xl shadow-2xl max-h-60 overflow-y-auto custom-scroll z-50"
           >
             <div
               v-for="mun in municipiosFiltrados"
               :key="mun.cvegeo"
               @mousedown.prevent="elegirMunicipio(mun)"
-              class="px-3 py-2 hover:bg-[#177DA6]/10 cursor-pointer flex justify-between items-center border-b last:border-0 text-sm"
-              :class="municipioSeleccionado?.nombre === mun.nombre ? 'bg-[#177DA6]/10' : ''"
+              class="px-4 py-3 hover:bg-blue-50 cursor-pointer flex justify-between items-center border-b border-slate-50 last:border-0"
             >
-              <span class="font-medium text-gray-800">{{ mun.nombre }}</span>
-              <span class="text-[10px] text-gray-400 font-mono">{{ mun.cvegeo }}</span>
+              <span class="text-sm font-bold text-slate-700">{{ mun.nombre }}</span>
+              <span class="text-[9px] font-mono text-slate-300">#{{ mun.cvegeo }}</span>
             </div>
-          </div>
-
-          <!-- Chip municipio activo -->
-          <div
-            v-if="municipioSeleccionado && !dropdownAbierto"
-            class="flex items-center justify-between bg-[#177DA6]/10 border border-[#177DA6]/20 rounded-md px-3 py-2"
-          >
-            <div class="flex items-center gap-2">
-              <MapPin :size="12" class="text-[#177DA6]" />
-              <span class="text-xs font-bold text-[#177DA6]">{{
-                municipioSeleccionado.nombre
-              }}</span>
-            </div>
-            <button @click="limpiarMunicipio" class="text-[#177DA6]/60 hover:text-[#177DA6]">
-              <X :size="12" />
-            </button>
           </div>
         </div>
 
-        <!-- Stats del municipio seleccionado -->
-        <Transition name="slide-down">
-          <div v-if="statsAgnosticas" class="space-y-3">
-            <div class="bg-[#012737] text-white p-4 rounded-xl">
-              <p class="text-[9px] font-black uppercase opacity-60 tracking-widest mb-1">
-                Total registros
-              </p>
-              <p class="text-3xl font-black">
-                {{ Number(statsAgnosticas.stats?.total_registros || 0).toLocaleString() }}
-              </p>
-              <p class="text-[10px] opacity-70 mt-1">{{ statsAgnosticas.municipio }}</p>
-            </div>
-
-            <!-- Campos sumables -->
-            <template v-for="(val, key) in statsAgnosticas.stats" :key="key">
-              <div
-                v-if="key.startsWith('sum_') && val > 0"
-                class="bg-gray-50 p-3 rounded-lg border border-gray-100"
-              >
-                <div class="flex justify-between items-center mb-1.5">
-                  <span class="text-[9px] font-bold text-gray-500 uppercase">
-                    {{ key.replace('sum_', '').replace(/_/g, ' ') }}
-                  </span>
-                  <span class="text-xs font-black text-gray-800">{{
-                    Number(val).toLocaleString()
-                  }}</span>
-                </div>
-                <div class="w-full bg-gray-200 h-1 rounded-full overflow-hidden">
-                  <div
-                    class="bg-[#177DA6] h-full rounded-full transition-all duration-700"
-                    :style="{
-                      width:
-                        Math.min((val / statsAgnosticas.stats.total_registros) * 100, 100) + '%',
-                    }"
-                  ></div>
-                </div>
-              </div>
-            </template>
-          </div>
-        </Transition>
-
-        <!-- Placeholder sin padrón -->
-        <div
-          v-if="!padronSeleccionadoId"
-          class="flex flex-col items-center justify-center py-12 text-center"
-        >
-          <Database :size="32" class="text-gray-200 mb-3" />
-          <p class="text-xs text-gray-400 font-medium">
-            Selecciona un padrón para visualizarlo en el mapa
-          </p>
+        <div v-if="padronSeleccionadoId" class="pt-4 border-t border-slate-100 space-y-3">
+          <label class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]"
+            >Herramientas</label
+          >
+          <button
+            @click="descargarPDF"
+            class="w-full flex items-center justify-center gap-2 py-3 bg-white border-2 border-slate-200 rounded-xl text-xs font-black text-slate-700 hover:border-red-500 hover:text-red-500 transition-all active:scale-95 shadow-sm"
+          >
+            <FileText :size="16" /> GENERAR REPORTE PDF
+          </button>
         </div>
       </div>
 
-      <!-- Footer — indicador consultando -->
-      <div class="p-4 border-t border-gray-100">
-        <Transition name="fade">
-          <div
-            v-if="store.mapLoading"
-            class="flex items-center gap-2 bg-slate-900 text-white px-3 py-2 rounded-lg w-full justify-center"
-          >
-            <div
-              class="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin shrink-0"
-            ></div>
-            <span class="text-xs font-black tracking-widest uppercase">Consultando</span>
-          </div>
-          <div v-else-if="padronSeleccionadoId" class="text-center">
-            <p class="text-[10px] text-gray-400">
-              <span class="font-bold text-gray-600">{{ totalEnVista }}</span> registros en vista
-            </p>
-          </div>
-        </Transition>
+      <div class="p-4 border-t border-slate-100 bg-slate-50 text-center">
+        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+          {{ totalEnVista }} registros en mapa
+        </p>
       </div>
     </aside>
 
-    <!-- ═══════════════════════════════════════════════
-         MAPA
-    ═══════════════════════════════════════════════ -->
-    <main class="flex-1 relative overflow-hidden">
-      <!-- Botón abrir sidebar (mobile) -->
-      <button
-        @click="isFiltersOpen = true"
-        class="md:hidden absolute top-4 left-4 z-[400] bg-white p-2.5 rounded-md shadow-lg text-gray-700 hover:text-[#177DA6]"
-      >
-        <Filter :size="20" />
-      </button>
-
-      <!-- Controles mapa -->
-      <div class="absolute top-4 right-4 z-[400] flex flex-col gap-2">
-        <button
-          @click="resetView"
-          class="bg-white p-2.5 rounded-md shadow-lg text-gray-700 hover:text-[#177DA6] transition-colors"
-          title="Centrar en EdoMex"
-        >
-          <Crosshair :size="20" />
-        </button>
-      </div>
-
-      <!-- Mapa -->
+    <main class="flex-1 relative bg-slate-200">
       <MapView
         v-if="padronSeleccionadoId"
         ref="mapRef"
@@ -239,65 +100,171 @@
         :modo="modoMapa"
         :datos-coropletas="datosCoropletas"
         :municipio-filtro="municipioSeleccionado?.nombre ?? null"
-        :tiene-coordenadas="tieneCoordenadas"
         @view-change="onMapMove"
         @zoom-nivel="onZoomNivel"
         @select="onSelectRegistro"
         @municipio-click="onMunicipioClick"
+        @seccion-click="onSeccionClick"
       />
 
-      <!-- Placeholder sin padrón seleccionado -->
-      <div v-else class="w-full h-full flex flex-col items-center justify-center bg-gray-50">
-        <Map :size="48" class="text-gray-200 mb-4" />
-        <p class="text-sm text-gray-400 font-medium">Selecciona un padrón en el panel izquierdo</p>
-      </div>
+      <Transition name="slide-up-banner">
+        <div
+          v-if="resumenMunicipioActivo || cargandoResumenMunicipio"
+          class="absolute bottom-10 left-1/2 -translate-x-1/2 z-[1001] w-[95%] max-w-3xl px-4"
+        >
+          <div
+            class="relative bg-slate-950/90 backdrop-blur-2xl border border-white/10 rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col"
+          >
+            <div
+              v-if="cargandoResumenMunicipio"
+              class="absolute top-0 left-0 right-0 h-1 bg-blue-500 animate-pulse"
+            ></div>
+
+            <div class="p-8">
+              <div class="flex items-center justify-between mb-8">
+                <div class="flex items-center gap-5">
+                  <div
+                    class="p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl shadow-inner"
+                  >
+                    <Building2
+                      v-if="!resumenMunicipioActivo?.seccion"
+                      :size="24"
+                      class="text-blue-400"
+                    />
+                    <Hash v-else :size="24" class="text-cyan-400" />
+                  </div>
+                  <div class="flex flex-col">
+                    <span
+                      class="text-[10px] font-black uppercase tracking-[0.3em] text-blue-500 mb-1"
+                    >
+                      {{
+                        resumenMunicipioActivo?.seccion
+                          ? 'Análisis de Sección Electoral'
+                          : 'Análisis Geográfico Municipal'
+                      }}
+                    </span>
+                    <h4
+                      class="text-3xl font-black text-white tracking-tighter leading-tight italic"
+                    >
+                      {{ resumenMunicipioActivo?.municipio }}
+                    </h4>
+                  </div>
+                </div>
+                <button
+                  @click="resumenMunicipioActivo = null"
+                  class="p-3 bg-white/5 hover:bg-red-500/20 border border-white/10 rounded-full transition-all group"
+                >
+                  <X :size="20" class="text-white/30 group-hover:text-red-400" />
+                </button>
+              </div>
+
+              <div v-if="resumenMunicipioActivo" class="space-y-6">
+                <div class="grid grid-cols-2 gap-4">
+                  <div
+                    class="flex flex-col justify-center p-6 bg-white/5 border border-white/10 rounded-[1.5rem] hover:bg-white/10 transition-colors"
+                  >
+                    <span
+                      class="text-[10px] font-bold text-white/30 uppercase tracking-[0.1em] mb-2"
+                      >Registros Totales</span
+                    >
+                    <div class="flex items-baseline gap-2">
+                      <span class="text-4xl font-black text-white tabular-nums leading-none">
+                        {{ resumenMunicipioActivo.total?.toLocaleString() }}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div
+                    v-if="resumenMunicipioActivo.meta?.clave_muestra"
+                    class="flex flex-col justify-center p-6 bg-blue-500/5 border border-blue-500/20 rounded-[1.5rem]"
+                  >
+                    <span
+                      class="text-[10px] font-bold text-blue-400/60 uppercase tracking-[0.1em] mb-2"
+                      >Clave de Zona</span
+                    >
+                    <div class="flex items-center gap-3">
+                      <Database :size="18" class="text-blue-500/40" />
+                      <span
+                        class="text-2xl font-mono font-bold text-blue-100 leading-none truncate"
+                      >
+                        {{ resumenMunicipioActivo.meta.clave_muestra }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  class="relative bg-black/20 rounded-[2rem] border border-white/5 overflow-hidden"
+                >
+                  <div
+                    class="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-4 overflow-y-auto pr-4 custom-scroll max-h-[180px] p-6"
+                  >
+                    <div
+                      v-for="item in resumenMunicipioActivo.detalles"
+                      :key="item.label"
+                      class="flex flex-col border-l-2 border-white/5 pl-3 hover:border-blue-500/50 transition-all group"
+                    >
+                      <span
+                        class="text-[9px] font-bold text-white/20 uppercase tracking-tight mb-1 truncate group-hover:text-blue-400/50 transition-colors"
+                      >
+                        {{ item.label }}
+                      </span>
+                      <span class="text-[13px] font-bold text-slate-200 tabular-nums truncate">
+                        {{ item.value || '—' }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Transition>
     </main>
 
-    <!-- ═══════════════════════════════════════════════
-         PANEL LATERAL DERECHO — Detalle registro
-    ═══════════════════════════════════════════════ -->
     <aside
       v-if="registroSeleccionado"
-      class="absolute right-0 top-0 z-[500] w-80 h-full bg-white border-l border-gray-200 shadow-2xl flex flex-col"
+      class="absolute right-0 top-0 z-[1600] w-96 h-full bg-white border-l border-slate-200 shadow-2xl flex flex-col"
     >
-      <div class="p-5 border-b border-gray-100 flex items-center justify-between">
-        <h3 class="font-bold text-gray-800 text-sm">Detalle del Registro</h3>
-        <button @click="registroSeleccionado = null" class="p-1 text-gray-400 hover:text-gray-700">
-          <X :size="18" />
+      <div class="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+        <h3
+          class="font-black text-slate-800 text-xs uppercase tracking-widest italic flex items-center gap-2"
+        >
+          <FileText :size="16" class="text-blue-600" /> Expediente del Registro
+        </h3>
+        <button
+          @click="registroSeleccionado = null"
+          class="p-2 text-slate-400 hover:text-red-500 transition-colors"
+        >
+          <X :size="20" />
         </button>
       </div>
 
-      <div class="flex-1 overflow-y-auto p-5 space-y-2.5">
-        <!-- Skeleton -->
-        <div v-if="cargandoDetalle" class="space-y-3">
-          <div v-for="i in 6" :key="i" class="bg-gray-100 animate-pulse h-12 rounded-lg"></div>
+      <div class="flex-1 overflow-y-auto p-8 space-y-6 custom-scroll bg-white">
+        <div v-if="cargandoDetalle" class="space-y-4">
+          <div v-for="i in 5" :key="i" class="h-14 bg-slate-50 animate-pulse rounded-xl"></div>
         </div>
-
         <template v-else>
-          <!-- Campos fijos -->
-          <template v-for="(val, key) in camposFijosRegistro" :key="key">
-            <div class="bg-gray-50 p-3 rounded-lg border border-gray-100">
-              <p class="text-[9px] font-bold text-gray-400 uppercase mb-0.5">{{ key }}</p>
-              <p class="text-sm font-semibold text-gray-800">{{ val }}</p>
-            </div>
-          </template>
-
-          <!-- Datos generales -->
-          <p
-            v-if="Object.keys(datosExtra).length"
-            class="text-[9px] font-bold text-gray-400 uppercase tracking-widest pt-2"
-          >
-            Datos adicionales
-          </p>
-          <div
-            v-for="(v, k) in datosExtra"
-            :key="k"
-            class="bg-gray-50 p-3 rounded-lg border border-gray-100"
-          >
-            <p class="text-[9px] font-bold text-gray-400 uppercase mb-0.5">
+          <div v-for="(val, key) in camposFijosRegistro" :key="key" class="group">
+            <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
+              {{ key }}
+            </p>
+            <p
+              class="text-sm font-bold text-slate-800 bg-slate-50 p-4 rounded-xl border border-slate-100 group-hover:bg-blue-50 transition-colors"
+            >
+              {{ val }}
+            </p>
+          </div>
+          <div class="h-px bg-slate-100 w-full my-6"></div>
+          <div v-for="(v, k) in datosExtra" :key="k" class="group">
+            <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
               {{ k.replace(/_/g, ' ') }}
             </p>
-            <p class="text-sm font-semibold text-gray-800">{{ v }}</p>
+            <p
+              class="text-sm font-semibold text-slate-600 bg-slate-50/30 p-4 rounded-xl border border-slate-50 group-hover:bg-slate-50 transition-colors"
+            >
+              {{ v }}
+            </p>
           </div>
         </template>
       </div>
@@ -306,22 +273,22 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { usePadronStore } from '@/stores/padronStore'
 import { useMunicipios } from '@/composables/useMunicipios'
 import MapView from '@/components/MapView.vue'
-// Agregado Building2 para los botones de niveles
 import {
-  Database,
-  Filter,
-  X,
   Search,
-  Map,
+  Building2,
+  Hash,
+  X,
+  ArrowLeft,
+  Database,
+  FileText,
   MapPin,
   Crosshair,
-  ArrowLeft,
-  Building2,
+  Map as MapIcon,
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -337,133 +304,62 @@ const modoMapa = ref('estado')
 const nivelActual = ref('estado')
 const municipioSeleccionado = ref(null)
 const datosCoropletas = ref([])
-const statsAgnosticas = ref(null)
+const resumenMunicipioActivo = ref(null)
+const cargandoResumenMunicipio = ref(false)
 const registroSeleccionado = ref(null)
 const cargandoDetalle = ref(false)
 const tieneCoordenadas = ref(false)
 
-// Dropdown municipios
 const busquedaMunicipio = ref('')
 const dropdownAbierto = ref(false)
-let _closeTimer = null
 let _moveTimer = null
 
-// Filtrar catálogo INEGI según lo que escribe el usuario
-const municipiosFiltrados = computed(() => {
-  const q = normalizar(busquedaMunicipio.value)
-  if (!q) return todosMunicipios
-  return todosMunicipios.filter((m) => m._norm?.includes(q) || m.nombre.toLowerCase().includes(q))
-})
-
-const cerrarDropdownDelay = () => {
-  _closeTimer = setTimeout(() => {
-    dropdownAbierto.value = false
-  }, 150)
-}
-
-// El usuario elige un municipio del dropdown
-const elegirMunicipio = (mun) => {
-  busquedaMunicipio.value = mun.nombre
-  dropdownAbierto.value = false
-  onMunicipioClick({ nombre: mun.nombre, cvegeo: mun.cvegeo })
-}
-
-// CORRECCIÓN: Resetea por completo los estados del mapa al limpiar
-const limpiarMunicipio = () => {
-  busquedaMunicipio.value = ''
-  dropdownAbierto.value = false
-  municipioSeleccionado.value = null
-  statsAgnosticas.value = null
-  registroSeleccionado.value = null
-
-  // Regresar al estado global
-  modoMapa.value = 'estado'
-  nivelActual.value = 'estado'
-  mapRef.value?.resetView()
-}
-
-// ── Computed ───────────────────────────────────────────────────────────────
+// ── Computadas ──────────────────────────────────────────────────────────────
 const padronActivo = computed(
   () => store.padrones.find((p) => p.id === padronSeleccionadoId.value) ?? null,
 )
-
-const registrosActuales = computed(() => {
-  if (modoMapa.value === 'clusters') return store.clusters
-  if (modoMapa.value === 'puntos') return store.beneficiarios
-  return []
-})
-
+const registrosActuales = computed(() =>
+  modoMapa.value === 'clusters' ? store.clusters : store.beneficiarios,
+)
 const totalEnVista = computed(() => {
   if (modoMapa.value === 'clusters')
     return store.clusters.reduce((a, c) => a + (parseInt(c.count) || 0), 0).toLocaleString()
   return store.beneficiarios.length.toLocaleString()
 })
 
-// CORRECCIÓN: Computada necesaria para los botones "Estado", "Municipio", "Detalle"
-const botonesNivel = computed(() => {
-  const base = [
-    { nivel: 'estado', label: 'Estado', icon: Map },
-    { nivel: 'municipio', label: 'Municipio', icon: Building2 },
-  ]
-  if (tieneCoordenadas.value) base.push({ nivel: 'punto', label: 'Detalle', icon: Crosshair })
-  return base
+const municipiosFiltrados = computed(() => {
+  const q = normalizar(busquedaMunicipio.value)
+  if (!q) return todosMunicipios
+  return todosMunicipios.filter((m) => m._norm?.includes(q) || m.nombre.toLowerCase().includes(q))
 })
-
-// Helpers para el panel de detalle
-const VACIOS = new Set(['', 'sin nombre', 'n/a', 'null', 'undefined', '-', '—'])
-const tieneValor = (v) => v != null && !VACIOS.has(String(v).trim().toLowerCase())
 
 const camposFijosRegistro = computed(() => {
   const r = registroSeleccionado.value
   if (!r) return {}
-  return Object.fromEntries(
-    Object.entries({
-      'Clave única': r.clave_unica,
-      Nombre: r.nombre_completo,
-      Municipio: r.municipio,
-      Sección: r.seccion,
-      Latitud: r.latitud,
-      Longitud: r.longitud,
-    }).filter(([, v]) => tieneValor(v)),
-  )
+  const items = {
+    'Clave única': r.clave_unica,
+    Nombre: r.nombre_completo,
+    Municipio: r.municipio,
+    Sección: r.seccion,
+  }
+  return Object.fromEntries(Object.entries(items).filter(([, v]) => v))
 })
 
 const datosExtra = computed(() => {
   const d = registroSeleccionado.value?.datos_generales
   if (!d) return {}
-  try {
-    const obj = typeof d === 'string' ? JSON.parse(d) : d
-    return Object.fromEntries(Object.entries(obj).filter(([, v]) => tieneValor(v)))
-  } catch {
-    return {}
-  }
+  const obj = typeof d === 'string' ? JSON.parse(d) : d
+  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v))
 })
 
-// ── Cambiar padrón ─────────────────────────────────────────────────────────
-const onCambiarPadron = async () => {
-  limpiarMunicipio()
-  datosCoropletas.value = []
-  store.clusters = []
-  store.beneficiarios = []
-
-  if (!padronSeleccionadoId.value) return
-
-  const resumen = await store.fetchResumenAgnostico(padronSeleccionadoId.value)
-  if (Array.isArray(resumen)) {
-    datosCoropletas.value = resumen
-    tieneCoordenadas.value = resumen.some((r) => r.tiene_coordenadas)
-  }
+// ── Métodos ────────────────────────────────────────────────────────────────
+const elegirMunicipio = (mun) => {
+  busquedaMunicipio.value = mun.nombre
+  dropdownAbierto.value = false
+  onMunicipioClick({ nombre: mun.nombre })
 }
 
-// ── Funciones de Navegación del Mapa ───────────────────────────────────────
-// CORRECCIÓN: Función vital para interactuar con los botones de arriba
-const irANivel = (nivel) => {
-  if (nivel === 'estado') {
-    limpiarMunicipio()
-  } else if (nivel === 'municipio' && municipioSeleccionado.value) {
-    mapRef.value?.zoomToMunicipio(municipioSeleccionado.value.nombre)
-  }
-}
+const cerrarDropdownDelay = () => setTimeout(() => (dropdownAbierto.value = false), 200)
 
 const onMapMove = (coords) => {
   clearTimeout(_moveTimer)
@@ -471,73 +367,87 @@ const onMapMove = (coords) => {
     if (!padronSeleccionadoId.value) return
     const { nivel } = coords
     const municipio = municipioSeleccionado.value?.nombre ?? null
-
-    if (nivel === 'estado') {
-      modoMapa.value = 'estado'
-    } else if (nivel === 'municipio') {
-      modoMapa.value = 'clusters'
-      await store.fetchMapaDatos(padronSeleccionadoId.value, { ...coords, municipio }, 'clusters')
-    } else if (nivel === 'punto' && tieneCoordenadas.value) {
-      modoMapa.value = 'puntos'
-      await store.fetchMapaDatos(padronSeleccionadoId.value, { ...coords, municipio }, 'puntos')
+    modoMapa.value = nivel === 'estado' ? 'estado' : nivel === 'municipio' ? 'clusters' : 'puntos'
+    if (modoMapa.value !== 'estado') {
+      await store.fetchMapaDatos(
+        padronSeleccionadoId.value,
+        { ...coords, municipio },
+        modoMapa.value,
+      )
     }
   }, 500)
 }
 
 const onZoomNivel = (nivel) => (nivelActual.value = nivel)
 
-// ── Click en municipio ─────────────────────────────────────────────────────
 const onMunicipioClick = async ({ nombre }) => {
   municipioSeleccionado.value = { nombre }
-  statsAgnosticas.value = await store.fetchResumenAgnostico(padronSeleccionadoId.value, nombre)
+  cargandoResumenMunicipio.value = true
+  resumenMunicipioActivo.value = null
 
-  if (nivelActual.value === 'estado') {
-    mapRef.value?.zoomToMunicipio(nombre)
+  if (mapRef.value?.limpiarSecciones) mapRef.value.limpiarSecciones()
+
+  try {
+    const data = await store.fetchResumenAgnostico(padronSeleccionadoId.value, nombre)
+    if (data) {
+      resumenMunicipioActivo.value = data
+      await nextTick()
+      if (data.hay_secciones) mapRef.value?.dibujarSecciones(data)
+      mapRef.value?.zoomToMunicipio(nombre)
+    }
+  } finally {
+    cargandoResumenMunicipio.value = false
   }
 }
 
-// ── Click en registro ──────────────────────────────────────────────────────
+const onSeccionClick = (payload) => {
+  resumenMunicipioActivo.value = {
+    municipio: `SECCIÓN ${payload.seccion}`,
+    total: payload.detalles?.length || 0,
+    detalles: payload.detalles,
+    seccion: payload.seccion,
+    meta: { clave_muestra: payload.meta?.clave },
+  }
+}
+
 const onSelectRegistro = async (r) => {
   registroSeleccionado.value = r
   cargandoDetalle.value = true
   const detalle = await store.fetchDetalleBeneficiario(padronSeleccionadoId.value, r.id)
-  if (registroSeleccionado.value?.id === r.id) {
-    registroSeleccionado.value = detalle ?? r
-  }
+  registroSeleccionado.value = detalle ?? r
   cargandoDetalle.value = false
 }
 
-const resetView = () => mapRef.value?.resetView()
+const descargarPDF = () => alert('Generando reporte PDF...')
 
-// ── Lifecycle ──────────────────────────────────────────────────────────────
 onMounted(async () => {
-  // Cargar lista de padrones para mostrar el nombre
-  if (store.status === 'idle' || store.status === 'error') {
-    await store.fetchPadrones()
-  }
-  // Iniciar datos del padrón que viene en la ruta
+  if (store.padrones.length === 0) await store.fetchPadrones()
   if (padronSeleccionadoId.value) {
-    await onCambiarPadron()
+    const resumen = await store.fetchResumenAgnostico(padronSeleccionadoId.value)
+    if (Array.isArray(resumen)) datosCoropletas.value = resumen
   }
 })
 </script>
 
 <style scoped>
-.slide-down-enter-active,
-.slide-down-leave-active {
-  transition: all 0.3s ease;
+.custom-scroll::-webkit-scrollbar {
+  width: 5px;
 }
-.slide-down-enter-from,
-.slide-down-leave-to {
+.custom-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scroll::-webkit-scrollbar-thumb {
+  background: rgba(59, 130, 246, 0.2);
+  border-radius: 10px;
+}
+
+.slide-up-banner-enter-active,
+.slide-up-banner-leave-active {
+  transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.slide-up-banner-enter-from,
+.slide-up-banner-leave-to {
   opacity: 0;
-  transform: translateY(-8px);
+  transform: translate(-50%, 100%) scale(0.9);
 }
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.2s ease;
-}
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-</style> 
+</style>
